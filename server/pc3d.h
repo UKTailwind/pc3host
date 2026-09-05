@@ -32,6 +32,7 @@ struct client {
 	int hello;			/* HELLO seen */
 	int mirror;			/* CONMIRROR: the display half is on */
 	int vsync_wait;			/* 0 none; 1 VSYNC; 2 VSYNCTRY */
+	unsigned keychan;		/* 0, or this connection's order as a key channel */
 	unsigned char *ufont[PC3D_UFONTS];	/* copies of FONTDEF data */
 	unsigned char *buf;		/* request payload */
 	size_t bufcap;
@@ -71,6 +72,20 @@ int  win_present(const uint32_t *buf, int w, int h);	/* -1 = closed */
 int  win_pump(void);			/* events only; -1 = closed */
 void win_title(const char *t);
 void win_close(void);
+
+/* keyboard.c: the window's keys through kbd_decode.c */
+void keyboard_event(int mfb_key, int pressed);	/* from MiniFB's callback */
+void keyboard_char(unsigned codepoint);		/* from MiniFB's char callback */
+void keyboard_pump(void);			/* after the window's event pump */
+void keyboard_tick(void);			/* every frame: auto-repeat */
+void keyboard_reset(void);			/* the window closed */
+void keyboard_inject(int mfb_key, int pressed);	/* PC3_INJECT */
+int  keyboard_keydown(int n);			/* KEYDOWN(n) */
+int  keyboard_set_layout(const char *name);	/* "UK", "US", ... */
+const char *keyboard_layout_name(void);
+void keyboard_set_log(int on);
+/* pc3d.c: a decoded byte for the key channel */
+void pc3d_key_byte(uint8_t c);
 
 extern int pc3d_verbose;
 

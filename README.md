@@ -38,12 +38,30 @@ build/bin/saveimage screen.bmp                # the screen, from another process
 The server starts itself when a program first opens the display, so the
 first line is optional. `PC3_DISPLAY=off` runs a program with no display.
 
+## Installing
+
+`bash packaging/make-deb.sh` builds `dist/pc3host_<version>_amd64.deb`,
+statically linked so it installs on any Linux of the architecture it
+was built on. It puts the tree under `/opt/pc3` and links the names a
+PC has no other use for into `/usr/bin`. The PC3's compiler is called
+`cc`, as on the board, and is deliberately not linked there: `pc3`
+opens a shell with `/opt/pc3/bin` first on the PATH, or runs one
+command that way.
+
+```
+sudo dpkg -i dist/pc3host_0.2.0_amd64.deb
+pc3                                   # a shell with the PC3 tools first
+cc -r /opt/pc3/share/examples/gfx1.bas
+```
+
 ## Where things stand
 
 Phase 0 built the tree and the gates and cut the first kernel seam.
 Phase 1 is the display server: a BASIC program, or a C program written
 against `pico_ioctl.h`, draws in a window through the kernel's own
-display core, on Linux and under WSLg. See [PHASE0.md](PHASE0.md) and
-[PHASE1.md](PHASE1.md). The keyboard, sound, the remaining programs,
-Windows and networking are phases 2 to 7 in the review; a PicoMite on a
-USB serial link for real I/O is phase 8.
+display core, on Linux and under WSLg. Phase 2 is the keyboard: the
+window's keys reach `INKEY$` and `KEYDOWN` through the PC3's own
+decoder, merged with the terminal's. See [PHASE0.md](PHASE0.md),
+[PHASE1.md](PHASE1.md) and [PHASE2.md](PHASE2.md). Sound, the remaining
+programs, Windows and networking are phases 3 to 7 in the review; a
+PicoMite on a USB serial link for real I/O is phase 8.

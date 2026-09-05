@@ -1,0 +1,29 @@
+#!/bin/sh
+#
+# pc3 - the Pico Computer 3 toolchain on the PATH.
+#
+#   pc3                  a shell with cc, bcrun, mmbc, mmedit and pc3d
+#                        first on the PATH; type exit to leave
+#   pc3 command args...  run one command that way, e.g. pc3 cc -r prog.bas
+#
+# The PC3's compiler is called cc, as it is on the board, and on a PC
+# /usr/bin/cc is the system's.  So the PC3's is not put there: it lives
+# in this directory, and this script puts the directory first on the
+# PATH for a shell or for one command.  Everything else here that does
+# not clash with a Linux name is also linked from /usr/bin by the
+# package, so bcrun, mmbc, mmedit and pc3d work from any shell.
+#
+# Wherever this tree was installed - /opt/pc3 by the package, or a
+# build directory - is found from this script's own location.
+here=$(cd "$(dirname "$(readlink -f "$0")")" && pwd)
+PC3_HOME=$(cd "$here/.." && pwd)
+export PC3_HOME
+PATH="$here:$PATH"
+export PATH
+
+if [ $# -gt 0 ]; then
+	exec "$@"
+fi
+echo "Pico Computer 3 on $(uname -s).  cc, bcrun, mmbc, mmedit and pc3d are on the PATH;"
+echo "examples are in $PC3_HOME/share/examples.  Type exit to leave."
+exec "${SHELL:-/bin/sh}"

@@ -21,13 +21,17 @@
  * a connection holds here, and it is given back when the connection
  * closes, which is the kernel's pagemap_free in one place.
  *
- *   pc3d [--headless] [--socket PATH] [--scale 1-4] [--verbose]
+ *   pc3d [--headless] [--socket PATH] [--scale 1-4] [--snapshot FILE.ppm]
+ *        [--keymap UK|US|DE|FR|ES|BE] [--keylog] [--verbose]
  *
  * --headless answers the protocol without a window, for tests.  The
  * default socket is $XDG_RUNTIME_DIR/pc3d.sock or /tmp/pc3d-<uid>.sock;
  * a client finds it the same way (pc3proto.h).  --scale is how many
  * window pixels a 640x480 raster pixel gets (present.c); 2 by default,
  * so the console is 1280x960 and a MODE 2 pixel is four times its size.
+ * --keymap is the keyboard layout the decoder runs with (keyboard.c),
+ * UK by default as on the board; --keylog prints every key event and
+ * the byte it became, for checking a layout.
  */
 
 #define _GNU_SOURCE
@@ -261,6 +265,74 @@ static int send_reply(struct client *c, int32_t ret, int32_t err,
 	return 0;
 }
 
+/* --- the keyboard's output ------------------------------------------------------ */
+
+static unsigned keychan_seq;
+
+/* Typed before anyone listened: the kernel's input ring holds 64 bytes
+ * for the next reader, and so does this. */
+static uint8_t keyring[64];
+static int keyring_n;
+
+static struct client *key_owner(void)
+{
+	struct client *best = NULL;
+	int i;
+
+	for (i = 0; i < PC3D_MAX_CLIENTS; i++)
+		if (clients[i].fd >= 0 && clients[i].keychan &&
+		    (!best || clients[i].keychan > best->keychan))
+			best = &clients[i];
+	return best;
+}
+
+static void keyring_flush(struct client *c)
+{
+	int i;
+
+	for (i = 0; i < keyring_n; i++)
+		if (write(c->fd, &keyring[i], 1) != 1)
+			break;
+	keyring_n = 0;
+}
+
+/* The decoder's bytes for one event are gathered and written in ONE
+ * write, so an arrow key's ESC [ A reaches the program whole: its
+ * INKEY$ reads the ESC and looks for the rest at once, and on a tty
+ * the kernel would have queued all three together.  Flushed after
+ * every pump, tick and injection. */
+static uint8_t keyout[64];
+static int keyout_n;
+
+void pc3d_key_byte(uint8_t c)
+{
+	if (keyout_n < (int)sizeof keyout)
+		keyout[keyout_n++] = c;
+}
+
+static void key_flush(void)
+{
+	struct client *k;
+	int i;
+
+	if (!keyout_n)
+		return;
+	k = key_owner();
+	if (!k) {
+		/* nobody listening: keep it for the next channel, as the
+		 * kernel's ring keeps what was typed before a read */
+		for (i = 0; i < keyout_n && keyring_n < (int)sizeof keyring; i++)
+			keyring[keyring_n++] = keyout[i];
+		keyout_n = 0;
+		return;
+	}
+	/* non-blocking: a program that never reads must not stall the
+	 * display; a full pipe drops the bytes, as a full ring would */
+	if (write(k->fd, keyout, (size_t)keyout_n) < 0 && errno != EAGAIN)
+		client_close(k);
+	keyout_n = 0;
+}
+
 /* One request from a client.  Returns -1 if the connection is finished. */
 static int serve(struct client *c)
 {
@@ -304,6 +376,26 @@ static int serve(struct client *c)
 	}
 	if (!c->hello)
 		return -1;
+
+	if (rq.code == PC3_KEYCHAN) {
+		/* this connection is the keyboard's output from now on;
+		 * whatever was typed before anyone listened goes first */
+		c->keychan = ++keychan_seq;
+		fcntl(c->fd, F_SETFL, fcntl(c->fd, F_GETFL) | O_NONBLOCK);
+		if (pc3d_verbose)
+			fprintf(stderr, "pc3d: pid %d takes the keyboard\n", c->pt.p_pid);
+		keyring_flush(c);
+		return 0;			/* no reply */
+	}
+	if (rq.code == PC3_INJECT) {
+		struct pc3_inject in;
+		if (rq.len < sizeof in)
+			return -1;
+		memcpy(&in, c->buf, sizeof in);
+		keyboard_inject(in.key, in.pressed);
+		key_flush();
+		return send_reply(c, 0, 0, NULL, 0);
+	}
 
 	pc3d_dispatch(c, rq.code, rq.arg, c->buf, rq.len, &r);
 	if (r.defer) {
@@ -382,6 +474,8 @@ static int tick(void)
 	int i, w, h;
 
 	frames++;
+	keyboard_tick();		/* auto-repeat, at the decoder's timing */
+	key_flush();
 	/* the waiters: VSYNC says 0, VSYNCTRY says 1 */
 	for (i = 0; i < PC3D_MAX_CLIENTS; i++) {
 		struct client *c = &clients[i];
@@ -410,6 +504,7 @@ static int tick(void)
 			fprintf(stderr, "pc3d: window closed\n");
 		return -1;
 	}
+	key_flush();			/* what the window's events produced */
 	return 0;
 }
 
@@ -433,9 +528,18 @@ int main(int argc, char **argv)
 			present_set_scale(atoi(argv[++i]));
 		else if (!strcmp(argv[i], "--snapshot") && i + 1 < argc)
 			snprintf(snap_path, sizeof snap_path, "%s", argv[++i]);
+		else if (!strcmp(argv[i], "--keymap") && i + 1 < argc) {
+			if (keyboard_set_layout(argv[++i])) {
+				fprintf(stderr, "pc3d: no keyboard layout %s "
+						"(US UK DE FR ES BE)\n", argv[i]);
+				return 2;
+			}
+		} else if (!strcmp(argv[i], "--keylog"))
+			keyboard_set_log(1);
 		else {
 			fprintf(stderr, "usage: pc3d [--headless] [--socket PATH] "
-					"[--scale 1-4] [--snapshot FILE.ppm] [--verbose]\n");
+					"[--scale 1-4] [--snapshot FILE.ppm] "
+					"[--keymap UK|US|DE|FR|ES|BE] [--keylog] [--verbose]\n");
 			return 2;
 		}
 	}
@@ -460,8 +564,9 @@ int main(int argc, char **argv)
 	signal(SIGPIPE, SIG_IGN);
 
 	if (pc3d_verbose)
-		fprintf(stderr, "pc3d: listening on %s%s\n", sock_path,
-			headless ? " (headless)" : "");
+		fprintf(stderr, "pc3d: listening on %s%s, keyboard layout %s\n",
+			sock_path, headless ? " (headless)" : "",
+			keyboard_layout_name());
 
 	next_tick = now_us() + frame_period();
 	if (!headless && tick() < 0)
@@ -523,8 +628,11 @@ int main(int argc, char **argv)
 			next_tick += frame_period();
 			if (next_tick < now_us())	/* fell behind: resync */
 				next_tick = now_us() + frame_period();
-		} else if (!headless && win_pump() < 0)
-			break;
+		} else if (!headless) {
+			if (win_pump() < 0)
+				break;
+			key_flush();
+		}
 	}
 out:
 	win_close();

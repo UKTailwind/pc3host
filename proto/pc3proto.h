@@ -64,6 +64,26 @@ struct pc3_hello {
 	int32_t ppid;
 };
 
+/* A KEY CHANNEL.  Sent once, after HELLO, on a connection of its own:
+ * from then on the server writes the keyboard's decoded bytes into it
+ * and expects nothing back - it is the console tty's input queue, as a
+ * stream.  The newest key channel gets the keys, as the program in the
+ * foreground on the board gets the console; a program that closes its
+ * channel hands the keyboard back to the one before it.  Bytes typed
+ * while no channel is open wait in the server, as they wait in the
+ * kernel's ring, for the next one. */
+#define PC3_KEYCHAN 0xFFFE
+
+/* A synthetic key event, exactly as the window would have delivered
+ * it: a MiniFB key code, pressed or released.  For tests and scripts
+ * (tools/pc3key.c); the server treats it as it treats the window. */
+#define PC3_INJECT 0xFFFD
+struct pc3_inject {
+	int32_t key;		/* MFB_KB_KEY_* */
+	int32_t pressed;	/* 1 down, 0 up */
+	int32_t mods;		/* reserved, 0 */
+};
+
 /* Payload ceiling.  The biggest legitimate payload is a BLIT of a whole
  * framebuffer (40,960 bytes) or a user font; a megabyte is generous and
  * bounds a bad client. */

@@ -36,6 +36,8 @@
 #include <sys/random.h>
 #include <sys/wait.h>
 #include <time.h>
+#include <poll.h>
+#include <termios.h>
 
 #include "pico_ioctl.h"
 #include "pc3proto.h"
@@ -700,10 +702,187 @@ int pc3_sys_ioctl(int fd, unsigned long code, void *arg)
 		*(uint32_t *)arg = r;
 		return 0;
 	}
+	case PICOIOC_KBDMAP:
+		/* two letters, the layout's name */
+		if (!arg) { errno = EFAULT; return -1; }
+		return roundtrip(fd, (uint16_t)code, arg, 2, NULL, 0);
+
 	case PICOIOC_LIBM:
 	default:
 		break;
 	}
 	errno = ENOTTY;
 	return -1;
+}
+
+/* --- the keyboard ------------------------------------------------------------ */
+
+static int keyfd = -1;			/* the key channel, or -1 */
+static time_t key_retry;		/* do not hammer connect() from a poll loop */
+static int stdin_eof;			/* fd 0 is not a terminal and has ended */
+
+/* Open the key channel to a RUNNING server - no autostart: a text
+ * program polling INKEY$ should not conjure a window.  A program with
+ * the display open reaches the same server, since there is one. */
+static int key_open(void)
+{
+	char path[4096];
+	const char *e = getenv(PC3_DISPLAY_ENV);
+	struct pc3_req rq;
+	struct pc3_hello h;
+	struct iovec iov[2];
+	int fd;
+	time_t now = time(NULL);
+
+	if (keyfd >= 0)
+		return keyfd;
+	if (e && (!strcmp(e, "off") || !strcmp(e, "0") || !strcmp(e, "none")))
+		return -1;
+	if (key_retry && now == key_retry)
+		return -1;
+	key_retry = now;
+	socket_path(path, sizeof path);
+	fd = try_connect(path);
+	if (fd < 0)
+		return -1;
+	rq.len = sizeof h;
+	rq.code = PC3_HELLO;
+	rq.flags = 0;
+	rq.arg = 0;
+	h.version = PC3_PROTO_VERSION;
+	h.pid = (int32_t)getpid();
+	h.ppid = (int32_t)getppid();
+	iov[0].iov_base = &rq;
+	iov[0].iov_len = sizeof rq;
+	iov[1].iov_base = &h;
+	iov[1].iov_len = sizeof h;
+	if (writev(fd, iov, 2) != (ssize_t)(sizeof rq + sizeof h)) {
+		close(fd);
+		return -1;
+	}
+	rq.len = 0;
+	rq.code = PC3_KEYCHAN;
+	if (write(fd, &rq, sizeof rq) != (ssize_t)sizeof rq) {
+		close(fd);
+		return -1;
+	}
+	signal(SIGPIPE, SIG_IGN);
+	keyfd = fd;
+	return fd;
+}
+
+int pc3_key_ready(void)
+{
+	return key_open() >= 0;
+}
+
+int pc3_rd1(void)
+{
+	struct pollfd p[2];
+	int n = 0, timeout = 0, r, ki = -1, ti = -1;
+	unsigned char c;
+
+	/* The terminal decides the wait: VMIN 0 and VTIME 0 is "what is
+	 * there"; VTIME alone is the escape-sequence gap the runtime sets
+	 * with tcsetattr; VMIN without VTIME is a blocking read. */
+	if (!stdin_eof) {
+		struct termios t;
+		if (isatty(0) && tcgetattr(0, &t) == 0) {
+			if (t.c_cc[VMIN] == 0)
+				timeout = t.c_cc[VTIME] * 100;
+			else
+				timeout = t.c_cc[VTIME] ? t.c_cc[VTIME] * 100 : -1;
+		}
+		p[n].fd = 0;
+		p[n].events = POLLIN;
+		ti = n++;
+	}
+	if (key_open() >= 0) {
+		p[n].fd = keyfd;
+		p[n].events = POLLIN;
+		ki = n++;
+	}
+	if (n == 0)
+		return -1;
+	r = poll(p, (nfds_t)n, timeout);
+	if (r <= 0)
+		return -1;
+	/* the window first: its bytes are already decoded and never part
+	 * of a sequence the terminal is in the middle of */
+	if (ki >= 0 && (p[ki].revents & (POLLIN | POLLHUP | POLLERR))) {
+		ssize_t k = read(keyfd, &c, 1);
+		if (k == 1) {
+			if (c == 3) {
+				raise(SIGINT);	/* the tty's ISIG, for the window */
+				return -1;
+			}
+			return (int)c;
+		}
+		close(keyfd);		/* the server went away */
+		keyfd = -1;
+		key_retry = 0;
+	}
+	if (ti >= 0 && (p[ti].revents & (POLLIN | POLLHUP | POLLERR))) {
+		ssize_t k = read(0, &c, 1);
+		if (k == 1)
+			return (int)c;
+		if (k == 0 && !isatty(0))
+			stdin_eof = 1;	/* /dev/null: stop asking it */
+	}
+	return -1;
+}
+
+int pc3_inject_key(int fd, int mfb_key, int pressed)
+{
+	struct pc3_inject in;
+	int ret;
+
+	if (!pc3_sys_isfd(fd)) {
+		errno = EBADF;
+		return -1;
+	}
+	in.key = (int32_t)mfb_key;
+	in.pressed = pressed ? 1 : 0;
+	in.mods = 0;
+	if (exchange(fd, PC3_INJECT, 0, &in, sizeof in, NULL, 0, NULL, 0, &ret) < 0)
+		return -1;
+	return ret;
+}
+
+/* --- where things are ---------------------------------------------------------- */
+
+int pc3_exe_dir(char *buf, size_t n)
+{
+	ssize_t k = readlink("/proc/self/exe", buf, n - 1);
+	char *slash;
+
+	if (k <= 0)
+		return -1;
+	buf[k] = 0;
+	slash = strrchr(buf, '/');
+	if (!slash)
+		return -1;
+	*slash = 0;
+	return 0;
+}
+
+void pc3_path_prepend(void)
+{
+	char dir[4096];
+	const char *old = getenv("PATH");
+	char *np;
+	size_t n;
+
+	if (pc3_exe_dir(dir, sizeof dir) < 0)
+		return;
+	if (old && strncmp(old, dir, strlen(dir)) == 0 &&
+	    (old[strlen(dir)] == ':' || old[strlen(dir)] == 0))
+		return;			/* already first */
+	n = strlen(dir) + 1 + (old ? strlen(old) : 0) + 1;
+	np = malloc(n);
+	if (!np)
+		return;
+	snprintf(np, n, "%s%s%s", dir, old ? ":" : "", old ? old : "");
+	setenv("PATH", np, 1);
+	free(np);
 }

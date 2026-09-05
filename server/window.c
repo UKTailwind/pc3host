@@ -11,17 +11,36 @@
  */
 
 #include <stdio.h>
+#include <stdbool.h>
 #include <MiniFB.h>
 #include "pc3d.h"
 
 static struct mfb_window *win;
 static int ww, wh;
 
+/* The keyboard: every press and release, and the character the host
+ * made of it, handed to keyboard.c - which queues them until the pump
+ * is over (see there for why). */
+static void on_key(struct mfb_window *w, mfb_key key, mfb_key_mod mod, bool pressed)
+{
+	(void)w;
+	(void)mod;		/* the decoder tracks modifiers as keys */
+	keyboard_event((int)key, pressed ? 1 : 0);
+}
+
+static void on_char(struct mfb_window *w, unsigned int code)
+{
+	(void)w;
+	keyboard_char(code);
+}
+
 int win_open(int w, int h)
 {
 	if (win && (ww != w || wh != h)) {
+		/* a raster change: the old window's keys are gone with it */
 		mfb_close(win);
 		win = NULL;
+		keyboard_reset();
 	}
 	if (!win) {
 		win = mfb_open_ex("Pico Computer 3", (unsigned)w, (unsigned)h, 0);
@@ -29,6 +48,8 @@ int win_open(int w, int h)
 			fprintf(stderr, "pc3d: cannot open a %dx%d window\n", w, h);
 			return -1;
 		}
+		mfb_set_keyboard_callback(win, on_key);
+		mfb_set_char_input_callback(win, on_char);
 		ww = w;
 		wh = h;
 	}
@@ -41,6 +62,7 @@ int win_present(const uint32_t *buf, int w, int h)
 		return 0;
 	if (mfb_update_ex(win, (void *)buf, (unsigned)w, (unsigned)h) != MFB_STATE_OK)
 		return -1;
+	keyboard_pump();		/* the events that update delivered */
 	return 0;
 }
 
@@ -50,6 +72,7 @@ int win_pump(void)
 		return 0;
 	if (mfb_update_events(win) != MFB_STATE_OK)
 		return -1;
+	keyboard_pump();
 	return 0;
 }
 

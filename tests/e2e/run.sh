@@ -91,5 +91,37 @@ else
 	check "gfxc screen" "$W/gfxc.bmp" "$D/gfxc.golden.bmp"
 fi
 
+# ---- keys.bas: the window's keyboard, pressed by pc3key --------------------------
+# The program has no terminal (stdin is /dev/null), so its INKEY$ and
+# KEYDOWN can only be fed by the server.  It starts, opens its key
+# channel on the first INKEY$, and then the script presses keys: a held
+# 'a' (read back through KEYDOWN while down), the up arrow (MMBasic
+# code 128), shift-b (66), and q to finish.  The 'a' is held for a
+# tenth of a second: the decoder repeats a key after 250 ms, and a
+# repeat is a second 'a', which the first draft of this test got.
+if [ -x "$BIN/pc3key" ]; then
+	if ! ( cd "$W" && BIN=$BIN W=$W MMB2C=$BIN/mmbc bash "$M/fcc/fccbuild.sh" "$D/keys.bas" ) > "$W/keys.build.log" 2>&1; then
+		echo "FAIL  keys (build)"; tail -5 "$W/keys.build.log"; fail=1
+	else
+		( cd "$W" && "$BIN/bcrun" "$W/keys.bc" < /dev/null > "$W/keys.stdout" 2>&1 ) &
+		PROG=$!
+		sleep 1
+		"$BIN/pc3key" press A;  sleep 0.1
+		"$BIN/pc3key" release A; sleep 0.2
+		"$BIN/pc3key" tap UP; sleep 0.2
+		"$BIN/pc3key" press LEFT_SHIFT; "$BIN/pc3key" tap B; "$BIN/pc3key" release LEFT_SHIFT; sleep 0.2
+		"$BIN/pc3key" tap Q
+		for i in $(seq 1 50); do
+			kill -0 $PROG 2>/dev/null || break
+			sleep 0.1
+		done
+		if kill -0 $PROG 2>/dev/null; then
+			echo "FAIL  keys: program did not finish"; kill $PROG; fail=1
+		fi
+		wait $PROG 2>/dev/null
+		check "keys readback" "$W/keys.out" "$D/keys.expected"
+	fi
+fi
+
 echo "e2e: pictures in $W/gfx1.png and $W/gfxc.png"
 exit $fail

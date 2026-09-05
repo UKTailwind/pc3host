@@ -1,0 +1,19 @@
+Package: pc3host
+Version: @VERSION@
+Section: devel
+Priority: optional
+Architecture: @ARCH@
+Installed-Size: @SIZE@
+Maintainer: Peter Mather <uktailwind@gmail.com>
+Homepage: https://github.com/UKTailwind/FUZIX
+Description: Pico Computer 3 BASIC environment for a PC
+ The Pico Computer 3's MMBasic toolchain, hosted on Linux: mmbc
+ translates MMBasic to C, cc compiles it to bytecode, bcrun runs it,
+ and pc3d shows the PC3's screen in a window and takes its keyboard.
+ The programs are the PC3's own, built for a PC and statically linked.
+ .
+ Run `pc3` for a shell with the tools on the PATH, or `pc3 cc -r
+ prog.bas` to build and run a program.  Examples are in
+ /opt/pc3/share/examples, documentation in /opt/pc3/share/doc/pc3host,
+ and the MMBasic translator's own directory - sources, runtime, tests
+ and samples - in /opt/pc3/share/mmb2c.

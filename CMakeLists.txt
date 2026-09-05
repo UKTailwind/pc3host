@@ -65,10 +65,12 @@ kit_tool(cc1
 kit_tool(cc2 ${CC_DIR}/backend.c ${CC_DIR}/backend-bcode.c)
 kit_tool(bcdump ${CC_DIR}/bcdump.c)
 kit_tool(dumptokens ${CC_DIR}/dumptokens.c)
-# The cc driver.  Its /usr/lib/cc and /usr/bin paths are the board's
-# (phase 5 makes them relocatable); it builds and is installed so the
-# layout is exercised, not because it runs from here yet.
+# The cc driver, installed as `cc`.  Under PC3_HOST it finds the passes
+# and headers in ../lib/cc/ beside its own directory and cpp, mmbc and
+# bcrun beside itself, so the tree runs from build/ or from /opt/pc3
+# alike - /usr/lib/cc and /usr/bin are the board's places.
 kit_tool(ccbc ${CC_DIR}/ccbc.c)
+set_target_properties(ccbc PROPERTIES OUTPUT_NAME cc)
 
 # ---- the client library: /dev/sys on a PC ----------------------------------
 # What a program opens as /dev/sys and ioctls, this carries to pc3d over
@@ -77,6 +79,8 @@ kit_tool(ccbc ${CC_DIR}/ccbc.c)
 # define the FUZIX sources know for "on a PC, talk to the server".
 add_library(pc3client STATIC client/pc3client.c)
 target_include_directories(pc3client PUBLIC client proto ${PLAT_DIR})
+target_compile_definitions(ccbc PRIVATE PC3_HOST)
+target_link_libraries(ccbc PRIVATE pc3client)
 
 # bcrun carries the mm runtime natively: bcrun_mm.c #includes
 # mmb2c/mmb_runtime.c, hence the include path.  fnum.c comes from the C
@@ -133,6 +137,8 @@ add_executable(mmedit ${ED_DIR}/mmedit.c ${ED_DIR}/shim.c
                       ${ED_DIR}/editor.c ${ED_DIR}/keywords.c)
 target_include_directories(mmedit PRIVATE ${ED_DIR})
 target_compile_options(mmedit PRIVATE -O0 -g)
+target_compile_definitions(mmedit PRIVATE PC3_HOST)	# F2 runs the cc beside it
+target_link_libraries(mmedit PRIVATE pc3client)
 
 # ---- the programs around a program: loaders and players ------------------
 # The image programs open /dev/sys through pc3sys.h and so reach the
@@ -176,6 +182,27 @@ target_compile_definitions(display_seam PRIVATE PC3_HOST)
 target_include_directories(display_seam PRIVATE ${PLAT_DIR})
 target_compile_options(display_seam PRIVATE -g -Wall -Wextra -Wno-unused-parameter)
 
+# ---- static linking, for a package that runs on any glibc --------------------
+# Built here against a recent glibc, a dynamic binary would demand that
+# glibc on the machine it is installed on.  Static, it demands nothing.
+# The X11 libraries are static too, so pc3d needs only an X server.
+# Declared before MiniFB is configured: its X11 lookup would otherwise
+# record libXrandr.so, which a static link refuses.
+option(PC3_STATIC "Link every program statically" OFF)
+if(PC3_STATIC)
+    # FindX11 builds its imported targets (X11::X11, X11::Xrandr and
+    # what they depend on) from these cache variables; given the
+    # archives, the targets link the archives.
+    foreach(x X11 Xrandr Xrender Xext)
+        find_library(PC3_${x}_A NAMES lib${x}.a)
+        if(PC3_${x}_A)
+            set(X11_${x}_LIB ${PC3_${x}_A} CACHE FILEPATH "static ${x} for pc3d" FORCE)
+        else()
+            message(FATAL_ERROR "PC3_STATIC needs lib${x}.a (the X11 development packages)")
+        endif()
+    endforeach()
+endif()
+
 # ---- the device server -------------------------------------------------------
 # MiniFB is the window.  X11 without OpenGL: the server hands it a
 # buffer already at the raster's size, so nothing needs scaling, and
@@ -190,16 +217,86 @@ add_subdirectory(ext/minifb EXCLUDE_FROM_ALL)
 # compile into it (display.c, fonts.c), against disphw.c's hooks and
 # the two stub headers in server/kstub that stand in for <kernel.h>
 # and <kdata.h>.  dispatch.c is misc.c's ioctl switch for a PC.
+# The keyboard is the kernel's decoder too: kbd_decode.c, vendored in
+# the platform directory byte-identical to the MicroPython port's, fed
+# HID boot reports that keyboard.c builds from MiniFB's key events.
 add_executable(pc3d
     server/pc3d.c server/dispatch.c server/disphw.c server/present.c
-    server/window.c server/fontdata.c
-    ${PLAT_DIR}/display.c ${PLAT_DIR}/fonts.c)
+    server/window.c server/fontdata.c server/keyboard.c
+    ${PLAT_DIR}/display.c ${PLAT_DIR}/fonts.c ${PLAT_DIR}/kbd_decode.c)
 target_compile_definitions(pc3d PRIVATE PC3_HOST)
 target_include_directories(pc3d PRIVATE server server/kstub proto ${PLAT_DIR}
                                         ext/minifb/include)
 target_compile_options(pc3d PRIVATE -O2 -g -Wall -Wextra -Wno-unused-parameter)
 target_link_libraries(pc3d PRIVATE minifb X11)
 set_target_properties(pc3d PROPERTIES LINKER_LANGUAGE CXX)
+
+# pc3key presses keys in the server from a script (tests/e2e/run.sh).
+add_executable(pc3key tools/pc3key.c)
+target_include_directories(pc3key PRIVATE ext/minifb/include)
+target_link_libraries(pc3key PRIVATE pc3client)
+
+# ---- static linking, the link step (the option is declared above MiniFB) ----
+if(PC3_STATIC)
+    foreach(t cc0 cc1 cc2 bcdump dumptokens ccbc bcrun bcrun-gate cpp mmbc mmedit
+              loadjpg loadpng loadimage saveimage playmp3 playwav playflac playmod
+              playsnd pc3key display_seam)
+        target_link_options(${t} PRIVATE -static)
+    endforeach()
+    target_link_options(pc3d PRIVATE -static)
+    # what libX11 and libXrandr need underneath them, by name so the
+    # archives are taken
+    target_link_libraries(pc3d PRIVATE Xrender Xext xcb Xau Xdmcp)
+endif()
+
+# ---- installing ------------------------------------------------------------------
+# The board's layout, under one prefix (/opt/pc3 for the package):
+#   bin/         the programs, and cc, and the pc3 launcher
+#   lib/cc/      cc0 cc1 cc2 and include/, as /usr/lib/cc on the board
+#   share/       documentation, the man pages as text, and the examples
+file(GLOB CC_INCLUDES ${CC_DIR}/hosttest/ctest-include/*.h)
+file(GLOB MMB_INCLUDES ${MMB_DIR}/mmb_*.h)
+install(TARGETS pc3d bcrun mmbc mmedit cpp bcdump ccbc pc3key
+                loadjpg loadpng loadimage saveimage
+                playmp3 playwav playflac playmod playsnd
+        RUNTIME DESTINATION bin)
+install(TARGETS cc0 cc1 cc2 RUNTIME DESTINATION lib/cc)
+install(PROGRAMS packaging/pc3 DESTINATION bin)
+# what the board's mkccimage.sh stages into /usr/lib/cc/include, by the
+# same rule: the bcrun-world C headers, every mmb_*.h, the pin registers
+# and the four FCC-view headers by name (not fcc/include's stdlib.h)
+install(FILES ${CC_INCLUDES} ${MMB_INCLUDES}
+              ${MMB_DIR}/fcc/include/math.h ${MMB_DIR}/fcc/include/ctype.h
+              ${MMB_DIR}/fcc/include/stdint.h ${MMB_DIR}/fcc/include/time.h
+              ${FUZIX_ROOT}/Library/include/sys/pc3io.h
+              ${PLAT_DIR}/pico_ioctl.h
+        DESTINATION lib/cc/include)
+install(FILES README.md REVIEW.md PHASE0.md PHASE1.md PHASE2.md
+              ${PLAT_DIR}/PC3-C-MANUAL.md ${MMB_DIR}/README.md
+        DESTINATION share/doc/pc3host)
+file(GLOB PC3_MAN ${FUZIX_ROOT}/Applications/man1/bcrun.1
+                  ${FUZIX_ROOT}/Applications/man1/cc.1
+                  ${FUZIX_ROOT}/Applications/man1/mmbc.1
+                  ${FUZIX_ROOT}/Applications/man1/mmedit.1
+                  ${FUZIX_ROOT}/Applications/man1/saveimage.1
+                  ${FUZIX_ROOT}/Applications/man1/loadjpg.1
+                  ${FUZIX_ROOT}/Applications/man1/loadpng.1)
+install(FILES ${PC3_MAN} DESTINATION share/doc/pc3host/man)
+install(FILES tests/e2e/gfx1.bas tests/e2e/gfxc.c tests/e2e/keys.bas
+        DESTINATION share/examples)
+install(DIRECTORY ${MMB_DIR}/samples/ DESTINATION share/examples/samples
+        FILES_MATCHING PATTERN "*.bas" PATTERN "*.md")
+# The whole MMBasic directory from the FUZIX tree - the translator in
+# Python and in C, the runtime and its headers, the tests with their
+# expected output, the samples, the plans and the coverage notes - so a
+# machine with the package has the sources the programs were built
+# from and the corpus they were proven on.  Build products stay out.
+install(DIRECTORY ${MMB_DIR}/ DESTINATION share/mmb2c
+        PATTERN "build" EXCLUDE
+        PATTERN "__pycache__" EXCLUDE
+        PATTERN "*.o" EXCLUDE
+        PATTERN "*.pyc" EXCLUDE
+        PATTERN "mmbc/mmbc" EXCLUDE)
 
 # ---- the gates ---------------------------------------------------------------
 # Today's gates, run against THIS build's binaries.  They live in the

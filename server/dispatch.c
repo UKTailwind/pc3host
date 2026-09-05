@@ -74,10 +74,31 @@ void pc3d_dispatch(struct client *c, uint16_t code, uint32_t arg,
 		return;
 
 	case PICOIOC_KEYDOWN: {
-		/* phase 2 gives this a keyboard; until then nothing is held */
+		/* MMBasic's fun_keydown by index, the whole snapshot at once
+		 * so count and codes are the same instant - misc.c's shape,
+		 * from the same decoder. */
 		struct kbd_down d;
-		memset(&d, 0, sizeof d);
+		int i;
+		d.count = (uint8_t)keyboard_keydown(0);
+		d.mods = (uint8_t)keyboard_keydown(7);
+		d.locks = (uint8_t)keyboard_keydown(8);
+		d.pad = 0;
+		for (i = 0; i < 6; i++)
+			d.key[i] = (uint8_t)keyboard_keydown(i + 1);
+		d.pad2[0] = d.pad2[1] = 0;
 		put(r, &d, sizeof d);
+		ok(r, 0);
+		return;
+	}
+
+	case PICOIOC_KBDMAP: {
+		/* OPTION KEYBOARD: two letters */
+		char name[3];
+		if (len < 2) { fail(r, EFAULT); return; }
+		name[0] = (char)pl[0];
+		name[1] = (char)pl[1];
+		name[2] = 0;
+		if (keyboard_set_layout(name)) { fail(r, EINVAL); return; }
 		ok(r, 0);
 		return;
 	}
