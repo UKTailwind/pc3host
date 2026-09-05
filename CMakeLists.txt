@@ -38,6 +38,20 @@ set(LIBS_DIR ${FUZIX_ROOT}/Library/libs)
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 set(BIN ${CMAKE_BINARY_DIR}/bin)
 
+# The headers cc's include directory carries - what the board's
+# mkccimage.sh stages into /usr/lib/cc/include, by the same rule: the
+# bcrun-world C headers, every mmb_*.h, the pin registers, the four
+# FCC-view headers by name (not fcc/include's stdlib.h), and the ioctl
+# header a PC3 C program includes.  One list, used for the build tree's
+# lib/cc/include and for the installed one.
+file(GLOB CC_INCLUDES ${CC_DIR}/hosttest/ctest-include/*.h)
+file(GLOB MMB_INCLUDES ${MMB_DIR}/mmb_*.h)
+set(PC3_CC_HEADERS ${CC_INCLUDES} ${MMB_INCLUDES}
+    ${MMB_DIR}/fcc/include/math.h ${MMB_DIR}/fcc/include/ctype.h
+    ${MMB_DIR}/fcc/include/stdint.h ${MMB_DIR}/fcc/include/time.h
+    ${FUZIX_ROOT}/Library/include/sys/pc3io.h
+    ${PLAT_DIR}/pico_ioctl.h)
+
 # ---- the Compiler Kit: cpp, cc0, cc1, cc2, the tools, bcrun ----------------
 # Flags are Applications/CC/Makefile.host's, exactly: the same object
 # format and the same 32-bit model the gates have always been run with.
@@ -71,6 +85,18 @@ kit_tool(dumptokens ${CC_DIR}/dumptokens.c)
 # alike - /usr/lib/cc and /usr/bin are the board's places.
 kit_tool(ccbc ${CC_DIR}/ccbc.c)
 set_target_properties(ccbc PROPERTIES OUTPUT_NAME cc)
+# ...and the build tree gets that layout too - lib/cc/{cc0,cc1,cc2,
+# include/} beside bin/ - so build/bin/cc works exactly as the installed
+# one does, which is how the samples get compiled here before a package
+# is made.
+set(CCLAYOUT ${CMAKE_BINARY_DIR}/lib/cc)
+add_custom_command(TARGET ccbc POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E make_directory ${CCLAYOUT}/include
+    COMMAND ${CMAKE_COMMAND} -E create_symlink ${BIN}/cc0 ${CCLAYOUT}/cc0
+    COMMAND ${CMAKE_COMMAND} -E create_symlink ${BIN}/cc1 ${CCLAYOUT}/cc1
+    COMMAND ${CMAKE_COMMAND} -E create_symlink ${BIN}/cc2 ${CCLAYOUT}/cc2
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different ${PC3_CC_HEADERS} ${CCLAYOUT}/include
+    VERBATIM)
 
 # ---- the client library: /dev/sys on a PC ----------------------------------
 # What a program opens as /dev/sys and ioctls, this carries to pc3d over
@@ -257,23 +283,13 @@ endif()
 #   bin/         the programs, and cc, and the pc3 launcher
 #   lib/cc/      cc0 cc1 cc2 and include/, as /usr/lib/cc on the board
 #   share/       documentation, the man pages as text, and the examples
-file(GLOB CC_INCLUDES ${CC_DIR}/hosttest/ctest-include/*.h)
-file(GLOB MMB_INCLUDES ${MMB_DIR}/mmb_*.h)
 install(TARGETS pc3d bcrun mmbc mmedit cpp bcdump ccbc pc3key
                 loadjpg loadpng loadimage saveimage
                 playmp3 playwav playflac playmod playsnd
         RUNTIME DESTINATION bin)
 install(TARGETS cc0 cc1 cc2 RUNTIME DESTINATION lib/cc)
 install(PROGRAMS packaging/pc3 DESTINATION bin)
-# what the board's mkccimage.sh stages into /usr/lib/cc/include, by the
-# same rule: the bcrun-world C headers, every mmb_*.h, the pin registers
-# and the four FCC-view headers by name (not fcc/include's stdlib.h)
-install(FILES ${CC_INCLUDES} ${MMB_INCLUDES}
-              ${MMB_DIR}/fcc/include/math.h ${MMB_DIR}/fcc/include/ctype.h
-              ${MMB_DIR}/fcc/include/stdint.h ${MMB_DIR}/fcc/include/time.h
-              ${FUZIX_ROOT}/Library/include/sys/pc3io.h
-              ${PLAT_DIR}/pico_ioctl.h
-        DESTINATION lib/cc/include)
+install(FILES ${PC3_CC_HEADERS} DESTINATION lib/cc/include)
 install(FILES README.md REVIEW.md PHASE0.md PHASE1.md PHASE2.md
               ${PLAT_DIR}/PC3-C-MANUAL.md ${MMB_DIR}/README.md
         DESTINATION share/doc/pc3host)
@@ -286,8 +302,14 @@ file(GLOB PC3_MAN ${FUZIX_ROOT}/Applications/man1/bcrun.1
                   ${FUZIX_ROOT}/Applications/man1/loadpng.1)
 install(FILES ${PC3_MAN} DESTINATION share/doc/pc3host/man)
 # keys.bas is the test fixture (it writes a file and shows nothing);
-# keydemo.bas is the one for a person.
+# keydemo.bas is the one for a person.  The solar eclipse predictor -
+# 3,213 lines of real astronomy, the translator's oldest fixture - comes
+# with the input the fixture feeds it and the output it must produce;
+# it also sits in share/mmb2c/tests with the rest of the corpus.
 install(FILES tests/e2e/gfx1.bas tests/e2e/gfxc.c tests/e2e/keydemo.bas
+              ${MMB_DIR}/tests/solar_eclipse.bas
+              ${MMB_DIR}/tests/solar_eclipse.in
+              ${MMB_DIR}/tests/solar_eclipse.expected
         DESTINATION share/examples)
 install(DIRECTORY ${MMB_DIR}/samples/ DESTINATION share/examples/samples
         FILES_MATCHING PATTERN "*.bas" PATTERN "*.md")

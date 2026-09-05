@@ -110,6 +110,20 @@ of `KEYDOWN` calls costs one drain and one crossing, which is what it
 costs on the board, where a call is microseconds. Eight taps, eight
 shown. The board's `mm_keydown` is untouched.
 
+## Two dialects, one flag
+
+`brownian.bas` through the packaged `cc` produced dozens of errors from
+`cc1` on correct C: the translator has two output dialects, gcc's with
+compound literals and the Compiler Kit's without, and the board's
+`mmbc`, built with `MMBC_ARENA`, defaults to the second while the PC's
+build, the gates', defaults to the first. The driver ran it with no
+flag. Under `PC3_HOST` it now passes `--fcc`; the board's call is the
+`#else`. With that, every sample in the tree and the solar eclipse
+compile through `cc`, and the eclipse reproduces its expected output in
+73 ms. The build tree now carries `lib/cc/{cc0,cc1,cc2,include}` beside
+`bin/` as the installed tree does, so `build/bin/cc` works and the
+sweep can be run before a package is made.
+
 ## The package, and the first machine it met
 
 `packaging/make-deb.sh` builds the Debian package with every tool
