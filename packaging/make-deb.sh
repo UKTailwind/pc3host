@@ -29,9 +29,10 @@ for t in cmake gcc g++ dpkg-deb fakeroot; do
 done
 
 rm -rf "$S"
+mkdir -p "$B"
 cmake -S "$R" -B "$B" -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/opt/pc3 \
-      -DPC3_STATIC=ON ${FUZIX_ROOT:+-DFUZIX_ROOT=$FUZIX_ROOT} > "$B.configure.log" 2>&1 \
-	|| { cat "$B.configure.log"; exit 1; }
+      -DPC3_STATIC=ON ${FUZIX_ROOT:+-DFUZIX_ROOT=$FUZIX_ROOT} > "$B/configure.log" 2>&1 \
+	|| { cat "$B/configure.log"; exit 1; }
 cmake --build "$B" -j"$(nproc)" 2>&1 | grep -E "error|warning: .*(pc3|keyboard|dispatch)|FAILED" || true
 DESTDIR=$S cmake --install "$B" > /dev/null
 
