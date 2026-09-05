@@ -39,6 +39,9 @@ struct client {
 	int hello;			/* HELLO seen */
 	int mirror;			/* CONMIRROR: the display half is on */
 	int vsync_wait;			/* 0 none; 1 VSYNC; 2 VSYNCTRY */
+	uint16_t tok;			/* the 16-bit owner id the sound core knows us by */
+	int pcm_wait;			/* SNDIOC_PCMWAIT outstanding, to pcm_mark */
+	uint32_t pcm_mark;
 	unsigned keychan;		/* 0, or this connection's order as a key channel */
 	unsigned char *ufont[PC3D_UFONTS];	/* copies of FONTDEF data */
 	unsigned char *buf;		/* request payload */
@@ -93,6 +96,21 @@ const char *keyboard_layout_name(void);
 void keyboard_set_log(int on);
 /* pc3d.c: a decoded byte for the key channel */
 void pc3d_key_byte(uint8_t c);
+
+/* sndhw.c: the kernel's sound core behind miniaudio.  The core owns
+ * and reaps by a 16-bit token (a Fuzix pid is one; a Linux pid is not),
+ * which pc3d.c hands each connection and translates back. */
+int  sndhw_init(const char *mode);		/* "auto" or "null"; 0 ok */
+void sndhw_close(void);
+const char *sndhw_backend(void);
+unsigned long sndhw_blocks(void);
+void sndhw_lock(void);				/* around every call into sound.c */
+void sndhw_unlock(void);
+int  sndhw_pcm_ready(uint16_t tok, uint32_t mark);	/* PCMWAIT can be answered */
+void sndhw_client_gone(uint16_t tok);
+/* pc3d.c: the token table */
+int  pc3d_tok_alive(uint16_t tok);
+int  pc3d_tok_pid(uint16_t tok);
 
 extern int pc3d_verbose;
 

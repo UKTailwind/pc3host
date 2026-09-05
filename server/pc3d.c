@@ -62,6 +62,7 @@ static struct client clients[PC3D_MAX_CLIENTS];
 static int listen_fd = -1;
 static char sock_path[4096];
 static int headless;
+static const char *audio_mode = "auto";
 static volatile sig_atomic_t stopping;
 
 /* The rasters' frame periods, from the kernel's video timing: 800x525
@@ -158,6 +159,23 @@ static int listen_on(const char *path)
 
 /* --- clients ---------------------------------------------------------------------- */
 
+/* The sound core's idea of a process is a 16-bit pid, so each connection
+ * gets a 16-bit token, never 0 and never one still in use. */
+static uint16_t tok_next(void)
+{
+	static unsigned seq;
+	int i, clash;
+
+	do {
+		seq = (seq + 1) & 0xFFFF;
+		clash = (seq == 0);
+		for (i = 0; i < PC3D_MAX_CLIENTS && !clash; i++)
+			if (clients[i].fd >= 0 && clients[i].tok == seq)
+				clash = 1;
+	} while (clash);
+	return (uint16_t)seq;
+}
+
 static struct client *client_new(int fd)
 {
 	int i;
@@ -168,9 +186,30 @@ static struct client *client_new(int fd)
 			memset(c, 0, sizeof *c);
 			c->fd = fd;
 			c->mirror = 1;
+			c->tok = tok_next();
 			return c;
 		}
 	return NULL;
+}
+
+int pc3d_tok_alive(uint16_t tok)
+{
+	int i;
+
+	for (i = 0; i < PC3D_MAX_CLIENTS; i++)
+		if (clients[i].fd >= 0 && clients[i].tok == tok)
+			return 1;
+	return 0;
+}
+
+int pc3d_tok_pid(uint16_t tok)
+{
+	int i;
+
+	for (i = 0; i < PC3D_MAX_CLIENTS; i++)
+		if (clients[i].fd >= 0 && clients[i].tok == tok)
+			return clients[i].pt.p_pid;
+	return 0;
 }
 
 static struct client *client_by_pid(int pid)
@@ -542,10 +581,17 @@ int main(int argc, char **argv)
 			}
 		} else if (!strcmp(argv[i], "--keylog"))
 			keyboard_set_log(1);
-		else {
+		else if (!strcmp(argv[i], "--audio") && i + 1 < argc) {
+			audio_mode = argv[++i];
+			if (strcmp(audio_mode, "auto") && strcmp(audio_mode, "null")) {
+				fprintf(stderr, "pc3d: --audio auto|null\n");
+				return 2;
+			}
+		} else {
 			fprintf(stderr, "usage: pc3d [--headless] [--socket PATH] "
 					"[--scale 1-4] [--snapshot FILE.ppm] "
-					"[--keymap UK|US|DE|FR|ES|BE] [--keylog] [--verbose]\n");
+					"[--keymap UK|US|DE|FR|ES|BE] [--keylog] "
+					"[--audio auto|null] [--verbose]\n");
 			return 2;
 		}
 	}
@@ -557,6 +603,8 @@ int main(int argc, char **argv)
 
 	disphw_init();
 	display_gfx_mode(0xFF);			/* the console, as at boot */
+	if (sndhw_init(audio_mode) < 0)
+		fprintf(stderr, "pc3d: no audio at all; sound requests will hang\n");
 
 	listen_fd = listen_on(sock_path);
 	if (listen_fd < 0)
@@ -570,16 +618,16 @@ int main(int argc, char **argv)
 	signal(SIGPIPE, SIG_IGN);
 
 	if (pc3d_verbose)
-		fprintf(stderr, "pc3d %s: listening on %s%s, keyboard layout %s\n",
+		fprintf(stderr, "pc3d %s: listening on %s%s, keyboard layout %s, audio %s\n",
 			PC3D_VERSION, sock_path, headless ? " (headless)" : "",
-			keyboard_layout_name());
+			keyboard_layout_name(), sndhw_backend());
 
 	next_tick = now_us() + frame_period();
 	if (!headless && tick() < 0)
 		goto out;
 
 	while (!stopping) {
-		int n = 0, r;
+		int n = 0, r, waiting = 0;
 		long long left;
 
 		pfd[n].fd = listen_fd;
@@ -588,14 +636,23 @@ int main(int argc, char **argv)
 		for (i = 0; i < PC3D_MAX_CLIENTS; i++)
 			if (clients[i].fd >= 0) {
 				pfd[n].fd = clients[i].fd;
-				/* a client waiting for the frame is not read
-				 * until it has its answer */
-				pfd[n].events = clients[i].vsync_wait ? 0 : POLLIN;
+				/* a client waiting for the frame, or for the
+				 * ring to drain, is not read until it has its
+				 * answer */
+				pfd[n].events = (clients[i].vsync_wait || clients[i].pcm_wait)
+						? 0 : POLLIN;
+				if (clients[i].pcm_wait)
+					waiting = 1;
 				n++;
 			}
 		left = next_tick - now_us();
 		if (left < 0)
 			left = 0;
+		/* A PCMWAIT is answered from this loop, so while one is
+		 * outstanding the loop runs at the kernel's tick rather
+		 * than the frame's: 5 ms there, 2 here. */
+		if (waiting && left > 2000)
+			left = 2000;
 		r = poll(pfd, (nfds_t)n, (int)((left + 999) / 1000));
 		if (r < 0 && errno != EINTR) {
 			perror("pc3d: poll");
@@ -628,6 +685,18 @@ int main(int argc, char **argv)
 				}
 			}
 		}
+		/* the players sleeping on the ring: the kernel's
+		 * sound_pcm_tick, answered when the level has dropped to
+		 * the mark or the stream has gone */
+		for (i = 0; i < PC3D_MAX_CLIENTS; i++) {
+			struct client *c = &clients[i];
+			if (c->fd >= 0 && c->pcm_wait &&
+			    sndhw_pcm_ready(c->tok, c->pcm_mark)) {
+				c->pcm_wait = 0;
+				if (send_reply(c, 0, 0, NULL, 0) < 0)
+					client_close(c);
+			}
+		}
 		if (now_us() >= next_tick) {
 			if (tick() < 0)
 				break;
@@ -645,9 +714,11 @@ out:
 	for (i = 0; i < PC3D_MAX_CLIENTS; i++)
 		if (clients[i].fd >= 0)
 			client_close(&clients[i]);
+	sndhw_close();
 	close(listen_fd);
 	unlink(sock_path);
 	if (pc3d_verbose)
-		fprintf(stderr, "pc3d: %lu frames, exiting\n", frames);
+		fprintf(stderr, "pc3d: %lu frames, %lu sound blocks, exiting\n",
+			frames, sndhw_blocks());
 	return 0;
 }

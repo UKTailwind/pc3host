@@ -167,10 +167,10 @@ target_compile_definitions(mmedit PRIVATE PC3_HOST)	# F2 runs the cc beside it
 target_link_libraries(mmedit PRIVATE pc3client)
 
 # ---- the programs around a program: loaders and players ------------------
-# The image programs open /dev/sys through pc3sys.h and so reach the
-# server; the players still open it directly and fail politely until
-# phase 3.  Building them all here is what keeps them compiling as the
-# shared code moves.
+# The image programs and the players open /dev/sys through pc3sys.h and
+# so reach the server, which answers the display codes and, since phase
+# 3, the sound codes.  Building them all here is what keeps them
+# compiling as the shared code moves.
 function(pc3_util name)
     add_executable(${name} ${ARGN})
     target_compile_options(${name} PRIVATE -std=gnu99 -O2 -Wall -Wno-unused)
@@ -188,15 +188,22 @@ set_source_files_properties(${UTIL_DIR}/upng.c PROPERTIES
     COMPILE_DEFINITIONS UPNG_NO_FILE)      # as utils/Makefile does
 pc3_image(loadimage ${UTIL_DIR}/loadimage.c)
 pc3_image(saveimage ${UTIL_DIR}/saveimage.c)
-pc3_util(playmp3   ${UTIL_DIR}/playmp3.c)
-pc3_util(playwav   ${UTIL_DIR}/playwav.c)
-pc3_util(playflac  ${UTIL_DIR}/playflac.c)
-pc3_util(playmod   ${UTIL_DIR}/playmod.c ${UTIL_DIR}/hxcmod.c)
-pc3_util(playsnd   ${UTIL_DIR}/playsnd.c)
+pc3_image(playmp3   ${UTIL_DIR}/playmp3.c)
+pc3_image(playwav   ${UTIL_DIR}/playwav.c)
+pc3_image(playflac  ${UTIL_DIR}/playflac.c)
+pc3_image(playmod   ${UTIL_DIR}/playmod.c ${UTIL_DIR}/hxcmod.c)
+pc3_image(playsnd   ${UTIL_DIR}/playsnd.c)
 target_link_libraries(playmp3  PRIVATE m)
 target_link_libraries(playflac PRIVATE m)
 target_link_libraries(playmod  PRIVATE m)
 target_link_libraries(playsnd  PRIVATE m)
+
+# The board's two sound probes, for the gates: pcmpace feeds the PCM
+# ring through a named pacing pattern and reports underruns; sndharness
+# is playsnd's renderer on its own, writing a WAV, and is the reference
+# the sound seam test compares the kernel synth against.
+pc3_image(pcmpace ${UTIL_DIR}/pcmpace.c)
+pc3_util(sndharness ${UTIL_DIR}/sndharness.c)
 
 # ---- the seam: the kernel's display core, compiled without the kernel ----
 # display.c is the portable half of the PC3 display driver (its scanout
@@ -248,16 +255,33 @@ add_subdirectory(ext/minifb EXCLUDE_FROM_ALL)
 # HID boot reports that keyboard.c builds from MiniFB's key events.
 file(READ VERSION PC3_VERSION)
 string(STRIP "${PC3_VERSION}" PC3_VERSION)
+# The sound is the kernel's too: sound.c (the synths, the PCM ring, the
+# ownership rules) compiles in against sndhw.c's hooks and plays through
+# miniaudio (ext/miniaudio, one header, its implementation in
+# server/miniaudio.c; the backends are dlopen'd at run time).
+find_package(Threads REQUIRED)
 add_executable(pc3d
     server/pc3d.c server/dispatch.c server/disphw.c server/present.c
     server/window.c server/fontdata.c server/keyboard.c server/crash.c
-    ${PLAT_DIR}/display.c ${PLAT_DIR}/fonts.c ${PLAT_DIR}/kbd_decode.c)
+    server/sndhw.c server/miniaudio.c
+    ${PLAT_DIR}/display.c ${PLAT_DIR}/fonts.c ${PLAT_DIR}/kbd_decode.c
+    ${PLAT_DIR}/sound.c)
 target_compile_definitions(pc3d PRIVATE PC3_HOST PC3D_VERSION="${PC3_VERSION}")
 target_include_directories(pc3d PRIVATE server server/kstub proto ${PLAT_DIR}
-                                        ext/minifb/include)
+                                        ext/minifb/include ext/miniaudio)
 target_compile_options(pc3d PRIVATE -O2 -g -Wall -Wextra -Wno-unused-parameter)
-target_link_libraries(pc3d PRIVATE minifb X11)
+set_source_files_properties(server/miniaudio.c PROPERTIES COMPILE_OPTIONS "-w")
+target_link_libraries(pc3d PRIVATE minifb X11 Threads::Threads ${CMAKE_DL_LIBS} m)
 set_target_properties(pc3d PROPERTIES LINKER_LANGUAGE CXX)
+
+# The sound seam: sound.c compiled against stub hooks and driven
+# directly - ownership, the ring, mono expansion, underrun counting, the
+# BBC square, and the MMBasic synth against sndharness sample for
+# sample (tests/seam/sound_seam.sh).
+add_executable(sound_seam tests/seam/sound_seam.c ${PLAT_DIR}/sound.c)
+target_compile_definitions(sound_seam PRIVATE PC3_HOST)
+target_include_directories(sound_seam PRIVATE ${PLAT_DIR})
+target_compile_options(sound_seam PRIVATE -g -Wall -Wextra -Wno-unused-parameter)
 
 # pc3key presses keys in the server from a script (tests/e2e/run.sh).
 add_executable(pc3key tools/pc3key.c)
@@ -268,7 +292,7 @@ target_link_libraries(pc3key PRIVATE pc3client)
 if(PC3_STATIC)
     foreach(t cc0 cc1 cc2 bcdump dumptokens ccbc bcrun bcrun-gate cpp mmbc mmedit
               loadjpg loadpng loadimage saveimage playmp3 playwav playflac playmod
-              playsnd pc3key display_seam)
+              playsnd pcmpace sndharness pc3key display_seam sound_seam)
         target_link_options(${t} PRIVATE -static)
     endforeach()
     # pc3d stays dynamic (see the note at the option), C++ runtime
@@ -290,7 +314,7 @@ install(TARGETS pc3d bcrun mmbc mmedit cpp bcdump ccbc pc3key
 install(TARGETS cc0 cc1 cc2 RUNTIME DESTINATION lib/cc)
 install(PROGRAMS packaging/pc3 DESTINATION bin)
 install(FILES ${PC3_CC_HEADERS} DESTINATION lib/cc/include)
-install(FILES README.md REVIEW.md PHASE0.md PHASE1.md PHASE2.md
+install(FILES README.md REVIEW.md PHASE0.md PHASE1.md PHASE2.md PHASE3.md
               ${PLAT_DIR}/PC3-C-MANUAL.md ${MMB_DIR}/README.md
         DESTINATION share/doc/pc3host)
 file(GLOB PC3_MAN ${FUZIX_ROOT}/Applications/man1/bcrun.1
@@ -337,6 +361,8 @@ enable_testing()
 set(GATE ${CMAKE_BINARY_DIR}/gate)
 
 add_test(NAME seam-display COMMAND display_seam)
+add_test(NAME seam-sound
+    COMMAND bash ${CMAKE_SOURCE_DIR}/tests/seam/sound_seam.sh ${BIN} ${GATE}/sound)
 
 add_test(NAME fcc-gate
     COMMAND ${CMAKE_COMMAND} -E env BIN=${GATEBIN} W=${GATE}/fcc PC3_DISPLAY=off
@@ -369,4 +395,4 @@ set_tests_properties(fcc-gate fcc-gate-mmbc cgate gcc-check PROPERTIES
     TIMEOUT 1800 RESOURCE_LOCK symtmp)
 set_tests_properties(fcc-gate fcc-gate-mmbc cgate gcc-check libgate PROPERTIES
     LABELS gates)
-set_tests_properties(seam-display PROPERTIES LABELS seam)
+set_tests_properties(seam-display seam-sound PROPERTIES LABELS seam)

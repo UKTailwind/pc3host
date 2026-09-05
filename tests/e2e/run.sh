@@ -38,7 +38,7 @@ die() { echo "e2e: $*" >&2; exit 1; }
 rm -rf "$W"
 mkdir -p "$W" || die "cannot make $W"
 
-"$BIN/pc3d" --headless --socket "$PC3_SOCKET" &
+"$BIN/pc3d" --headless --audio null --socket "$PC3_SOCKET" &
 SRV=$!
 trap 'kill $SRV 2>/dev/null; wait $SRV 2>/dev/null' EXIT
 for i in $(seq 1 50); do
@@ -120,6 +120,40 @@ if [ -x "$BIN/pc3key" ]; then
 		fi
 		wait $PROG 2>/dev/null
 		check "keys readback" "$W/keys.out" "$D/keys.expected"
+	fi
+fi
+
+# ---- sound: the PCM ring paced by pcmpace, and PLAY through BASIC ----------------
+# The server runs miniaudio's null backend, which consumes frames in
+# real time and plays nothing.  pcmpace feeds a 440 Hz sine at playsnd's
+# old pattern (512-frame chunks to a 16K target every 10 ms) and reports
+# the underruns; 16K is 93 ms of audio, so the drain afterwards is a
+# handful of 20 ms polls.  play.bas then does what a program does.
+if [ -x "$BIN/pcmpace" ]; then
+	"$BIN/pcmpace" 2 512 16384 10000 > "$W/pcmpace.out" 2>&1
+	# "while feeding" is the number: the final count adds the empty
+	# blocks between the ring running dry and the program's next 20 ms
+	# poll noticing, on the board as here.
+	if grep -q "underruns while feeding: 0" "$W/pcmpace.out"; then
+		echo "pass  pcmpace: no underruns while feeding"
+	else
+		echo "FAIL  pcmpace"; tail -4 "$W/pcmpace.out"; fail=1
+	fi
+	polls=$(sed -n 's/drained after \([0-9]*\) polls.*/\1/p' "$W/pcmpace.out")
+	if [ -n "$polls" ] && [ "$polls" -le 12 ]; then
+		echo "pass  pcmpace: 16K drained in $polls polls"
+	else
+		echo "FAIL  pcmpace: drain took ${polls:-?} polls"; fail=1
+	fi
+fi
+if [ -x "$BIN/sndharness" ]; then
+	"$BIN/sndharness" "$W/snd.wav" 440 > /dev/null
+	if ! ( cd "$W" && BIN=$BIN W=$W MMB2C=$BIN/mmbc bash "$M/fcc/fccbuild.sh" "$D/play.bas" ) > "$W/play.build.log" 2>&1; then
+		echo "FAIL  play (build)"; tail -5 "$W/play.build.log"; fail=1
+	else
+		( cd "$W" && timeout 30 "$BIN/bcrun" "$W/play.bc" < /dev/null > "$W/play.stdout" 2>&1 )
+		echo "bcrun play exit $?" >> "$W/play.stdout"
+		check "play readback" "$W/play.out" "$D/play.expected"
 	fi
 fi
 

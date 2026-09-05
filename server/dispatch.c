@@ -20,6 +20,8 @@
 #include <errno.h>
 
 #include "display.h"
+#include "sound.h"
+#include "sound_priv.h"
 #include "kstub/kdata.h"
 #include "pico_ioctl.h"
 #include "pc3proto.h"
@@ -473,6 +475,130 @@ void pc3d_dispatch(struct client *c, uint16_t code, uint32_t arg,
 		}
 	}
 
+	/* ---- sound: misc.c's SNDIOC section, the kernel's own sound.c
+	 * behind it (sndhw.c).  The owner is the connection's token, and
+	 * every call into the core is under the core's lock, because the
+	 * audio thread is filling from it at the same time. ---- */
+	case SNDIOC_SOUND: {
+		struct snd_cmd sc;
+		int rc;
+
+		if (len < sizeof sc) { fail(r, EFAULT); return; }
+		memcpy(&sc, pl, sizeof sc);
+		sndhw_lock();
+		rc = sound_cmd(sc.chan, sc.amp, sc.pitch, sc.dur);
+		sndhw_unlock();
+		if (rc) { fail(r, EAGAIN); return; }
+		ok(r, 0);
+		return;
+	}
+	case SNDIOC_ENV:
+		if (len < 14) { fail(r, EFAULT); return; }
+		sndhw_lock();
+		sound_envelope(pl);
+		sndhw_unlock();
+		ok(r, 0);
+		return;
+	case SNDIOC_QUIET:
+		sndhw_lock();
+		sound_quiet();
+		sndhw_unlock();
+		ok(r, 0);
+		return;
+	case SNDIOC_PCMOPEN: {
+		struct snd_pcm p;
+		int rc;
+
+		if (len < sizeof p) { fail(r, EFAULT); return; }
+		memcpy(&p, pl, sizeof p);
+		if (p.bits != 16) { fail(r, EINVAL); return; }
+		/* The stream belongs to a PROCESS, not to a file handle:
+		 * the pid is what a dead owner can be detected by, and what
+		 * BASIC's PLAY STOP has to signal. */
+		sndhw_lock();
+		rc = sound_pcm_open(p.rate, p.channels, c->tok);
+		sndhw_unlock();
+		if (rc) { fail(r, rc == -2 ? EBUSY : EINVAL); return; }
+		ok(r, 0);
+		return;
+	}
+	case SNDIOC_PCMWRITE: {
+		int n;
+
+		/* the payload IS the samples; a short count is the ring
+		 * being full, and the player comes back */
+		sndhw_lock();
+		n = sound_pcm_write(pl, len, c->tok);
+		sndhw_unlock();
+		if (n < 0) { fail(r, EINVAL); return; }
+		ok(r, n);
+		return;
+	}
+	case SNDIOC_PCMSTAT: {
+		struct snd_stat st;
+
+		sndhw_lock();
+		sound_pcm_stat(&st.space, &st.queued, &st.underruns);
+		sndhw_unlock();
+		put(r, &st, sizeof st);
+		if (r->err) return;
+		ok(r, 0);
+		return;
+	}
+	case SNDIOC_PCMWAIT: {
+		/* arg is the low-water mark in bytes.  Answered now if
+		 * there is room, else deferred: pc3d.c's loop replies when
+		 * the ring has drained to it - the kernel's tick, at 2 ms
+		 * rather than 5. */
+		uint32_t q;
+		int rc;
+
+		sndhw_lock();
+		rc = sound_pcm_queued(c->tok, &q);
+		sndhw_unlock();
+		if (rc < 0) { fail(r, EINVAL); return; }
+		if (q <= arg) { ok(r, 0); return; }
+		c->pcm_wait = 1;
+		c->pcm_mark = arg;
+		r->defer = 1;
+		return;
+	}
+	case SNDIOC_PCMCLOSE:
+		sndhw_lock();
+		sound_pcm_close(c->tok);
+		sndhw_unlock();
+		ok(r, 0);
+		return;
+	case SNDIOC_PCMOWNER: {
+		uint16_t tok;
+
+		sndhw_lock();
+		tok = sound_pcm_owner();
+		sndhw_unlock();
+		/* the real pid, which is what kill() wants */
+		ok(r, tok ? pc3d_tok_pid(tok) : 0);
+		return;
+	}
+	case SNDIOC_MMCMD: {
+		struct snd_mmcmd m;
+		int rc;
+
+		if (len < sizeof m) { fail(r, EFAULT); return; }
+		memcpy(&m, pl, sizeof m);
+		sndhw_lock();
+		rc = sound_mm_cmd(m.op, m.a, m.b, m.p1, m.p2, m.p3, c->tok);
+		sndhw_unlock();
+		if (rc) { fail(r, EBUSY); return; }	/* an MP3/MOD player holds it */
+		ok(r, 0);
+		return;
+	}
+	case SNDIOC_MMSTOP:
+		sndhw_lock();
+		sound_mm_stop();
+		sndhw_unlock();
+		ok(r, 0);
+		return;
+
 	default:
 		break;
 	}
@@ -486,6 +612,7 @@ void pc3d_client_gone(struct client *c)
 	/* what the kernel's pagemap_free does for a dying process */
 	display_fb_release(&c->pt);
 	display_font_release(&c->pt);
+	sndhw_client_gone(c->tok);
 	for (i = 0; i < PC3D_UFONTS; i++) {
 		free(c->ufont[i]);
 		c->ufont[i] = NULL;

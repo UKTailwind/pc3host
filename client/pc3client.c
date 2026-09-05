@@ -707,6 +707,44 @@ int pc3_sys_ioctl(int fd, unsigned long code, void *arg)
 		if (!arg) { errno = EFAULT; return -1; }
 		return roundtrip(fd, (uint16_t)code, arg, 2, NULL, 0);
 
+	/* ---- sound: fixed-width structures in, a structure back for STAT,
+	 * and the PCM samples themselves as PCMWRITE's payload ---- */
+	case SNDIOC_SOUND:
+		if (!arg) { errno = EFAULT; return -1; }
+		return roundtrip(fd, (uint16_t)code, arg, sizeof(struct snd_cmd), NULL, 0);
+	case SNDIOC_ENV:
+		if (!arg) { errno = EFAULT; return -1; }
+		return roundtrip(fd, (uint16_t)code, arg, 14, NULL, 0);
+	case SNDIOC_PCMOPEN:
+		if (!arg) { errno = EFAULT; return -1; }
+		return roundtrip(fd, (uint16_t)code, arg, sizeof(struct snd_pcm), NULL, 0);
+	case SNDIOC_MMCMD:
+		if (!arg) { errno = EFAULT; return -1; }
+		return roundtrip(fd, (uint16_t)code, arg, sizeof(struct snd_mmcmd), NULL, 0);
+	case SNDIOC_PCMSTAT:
+		if (!arg) { errno = EFAULT; return -1; }
+		return roundtrip(fd, (uint16_t)code, NULL, 0, arg, sizeof(struct snd_stat));
+	case SNDIOC_PCMWRITE: {
+		const struct snd_buf *b = arg;
+		size_t n;
+
+		if (!b || (!b->base && b->len)) { errno = EFAULT; return -1; }
+		/* a short write is legal, so the payload ceiling is one */
+		n = b->len > PC3_MAX_PAYLOAD ? PC3_MAX_PAYLOAD : b->len;
+		if (exchange(fd, (uint16_t)code, 0, b->base, n, NULL, 0, NULL, 0, &ret) < 0)
+			return -1;
+		return ret;
+	}
+	case SNDIOC_PCMWAIT:
+		/* the mark is the argument; the reply comes when the ring
+		 * has drained to it, which is the blocking the kernel does */
+		return simple(fd, (uint16_t)code, (uint32_t)(uintptr_t)arg);
+	case SNDIOC_QUIET:
+	case SNDIOC_PCMCLOSE:
+	case SNDIOC_PCMOWNER:
+	case SNDIOC_MMSTOP:
+		return simple(fd, (uint16_t)code, 0);
+
 	case PICOIOC_LIBM:
 	default:
 		break;

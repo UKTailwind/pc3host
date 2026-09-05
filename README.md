@@ -61,7 +61,11 @@ Phase 1 is the display server: a BASIC program, or a C program written
 against `pico_ioctl.h`, draws in a window through the kernel's own
 display core, on Linux and under WSLg. Phase 2 is the keyboard: the
 window's keys reach `INKEY$` and `KEYDOWN` through the PC3's own
-decoder, merged with the terminal's. See [PHASE0.md](PHASE0.md),
-[PHASE1.md](PHASE1.md) and [PHASE2.md](PHASE2.md). Sound, the remaining
-programs, Windows and networking are phases 3 to 7 in the review; a
-PicoMite on a USB serial link for real I/O is phase 8.
+decoder, merged with the terminal's. Phase 3 is sound: the kernel's own
+synths and PCM ring, compiled into the server and played through
+miniaudio, so `PLAY SOUND`, `PLAY TONE` and the WAV, MP3, FLAC and MOD
+players work as they do on the board. See [PHASE0.md](PHASE0.md),
+[PHASE1.md](PHASE1.md), [PHASE2.md](PHASE2.md) and
+[PHASE3.md](PHASE3.md). The remaining programs, Windows and networking
+are phases 4 to 7 in the review; a PicoMite on a USB serial link for
+real I/O is phase 8.

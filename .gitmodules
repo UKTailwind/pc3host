@@ -5,3 +5,6 @@
 [submodule "ext/minifb"]
 	path = ext/minifb
 	url = https://github.com/emoon/minifb
+[submodule "ext/miniaudio"]
+	path = ext/miniaudio
+	url = https://github.com/mackron/miniaudio
