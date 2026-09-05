@@ -285,7 +285,9 @@ file(GLOB PC3_MAN ${FUZIX_ROOT}/Applications/man1/bcrun.1
                   ${FUZIX_ROOT}/Applications/man1/loadjpg.1
                   ${FUZIX_ROOT}/Applications/man1/loadpng.1)
 install(FILES ${PC3_MAN} DESTINATION share/doc/pc3host/man)
-install(FILES tests/e2e/gfx1.bas tests/e2e/gfxc.c tests/e2e/keys.bas
+# keys.bas is the test fixture (it writes a file and shows nothing);
+# keydemo.bas is the one for a person.
+install(FILES tests/e2e/gfx1.bas tests/e2e/gfxc.c tests/e2e/keydemo.bas
         DESTINATION share/examples)
 install(DIRECTORY ${MMB_DIR}/samples/ DESTINATION share/examples/samples
         FILES_MATCHING PATTERN "*.bas" PATTERN "*.md")
@@ -299,6 +301,7 @@ install(DIRECTORY ${MMB_DIR}/ DESTINATION share/mmb2c
         PATTERN "__pycache__" EXCLUDE
         PATTERN "*.o" EXCLUDE
         PATTERN "*.pyc" EXCLUDE
+        PATTERN ".symtmp" EXCLUDE
         PATTERN "mmbc/mmbc" EXCLUDE)
 
 # ---- the gates ---------------------------------------------------------------
