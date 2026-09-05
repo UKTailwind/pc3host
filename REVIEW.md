@@ -537,10 +537,27 @@ the zip. Gate: phases 1 to 5's gates on Windows 11.
 family, TLS through mbedtls (the library the kernel already uses).
 Gate: `retic.bas` and the `WEB` samples.
 
+**Phase 8, real I/O through a PicoMite.** The board peripherals the
+server answers "not available" (section 7) come back through a plain
+RP2040 PicoMite on a USB CDC serial link. The PicoMite already has
+every driver: MMBasic's `SETPIN`, `PIN`, `PULSIN`, `I2C`, `SPI`,
+`PWM`, `ADC`, `BITSTREAM` and the counting inputs are commands on it,
+so the bridge firmware is a small BASIC program, or a C program on the
+same board, answering a line protocol. The server owns the port and
+translates the 12 pin-claim and PIO codes, the I2C and SPI triplets,
+`ADVAL`, `RTCREG` and the `SETPIN` and `PIN` paths into requests. Two
+consequences follow from the link rather than the design: a request
+costs about a millisecond over CDC where a register store on the PC3
+costs ten nanoseconds, so pin-toggling loops run slowly and batching
+matters; and MMBasic's pin "interrupts" are a poll per statement, so
+the poll becomes one request per statement and its latency the same
+millisecond. Pin numbering is the PicoMite's own, or the PC3's
+GPIO numbers mapped to it; the review favours the PC3 numbering so a
+program moves between the machines unchanged. Gate: the I2C, one-wire
+and counting samples against the same sensors on a PC3.
+
 Optional, after: the `--native` engine and a bundled tcc; a
-shared-memory framebuffer for bulk readback; a virtual pin panel or a
-USB-to-I2C bridge (MCP2221A or FT232H) so the I2C samples can talk to
-real QWIIC sensors from a PC.
+shared-memory framebuffer for bulk readback.
 
 Rough sizes:
 
