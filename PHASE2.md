@@ -168,6 +168,57 @@ held     1    97
 The first draft of the test held the key for 300 ms and got two `a`s,
 which was the decoder repeating after 250 ms, exactly as it should.
 
+## The sweep
+
+Every sample and every test program was run against a headless server
+(`tests/sweep/run-samples.sh`, four seconds each, the screen saved
+afterwards; `tests/sweep/run-corpus.sh`, the board-shaped bcrun against
+the `.expected` files). Two faults were the host's to fix; the rest is
+later phases.
+
+**The print that vanished.** With a display, `layer.bas` lost the two
+lines it prints after trapped errors. The cause was in the runtime, not
+the display: while `ON ERROR` is armed a `PRINT` is buffered and
+committed at the statement boundary, and the commit wrote each byte
+"to the glyph engine, or else to the tty". In a graphics mode the glyph
+engine takes the byte, so the line was painted and never reached the
+console, whereas the same `PRINT` unarmed went through `mm_putc`, which
+honours `OPTION CONSOLE` and writes both. One `mm_sink()` now carries
+the option for both paths. The hosted build found it because the tty is
+its whole console; on the board the same line was missing from the
+serial side under `OPTION CONSOLE BOTH`. The corpus with a display is 78
+identical, 2 differ (mminfo's lock state and printat's cursor escapes,
+both the file's limitation), 10 fail (the pin tests, phase 8).
+
+**Every SETTICK program crashed.** `settick`, `tempr`, `tickpause`,
+`udprecv` and `websrv` died with SIGSEGV at address 0x400b0025, with a
+display or without, but only when built by the `cc` driver: the same
+program through the gate script ran. The address is in the RP2350's
+TIMER0 register block. The driver preprocessed with `-DMM_PC3`, the
+board's define, under which `mmb_int.h` and `mmb_wait.h` read TIMER0
+directly for the tick clock and `mmb_gpio.h` writes the pin registers;
+on the board a program address is a machine address and that is right,
+on a PC it is unmapped memory. The gate script uses `-DMM_FCC`, under
+which those headers call the runtime's natives, and the host bcrun is
+that runtime. So under `PC3_HOST` the driver defines `MM_FCC`; the
+board's arm is the `#else` and its `ccbc.o` is byte-identical. The
+settick torture sample now passes all five phases on the host. The
+lesson generalises: anything a program-side header does *directly to
+hardware* is a host fault waiting to happen, and the define is the
+switch.
+
+**What the rest of the sweep says.** The 33 programs that finished
+cleanly did what they say; the ten still running at the limit had drawn
+the right screen (Breakout and PicoVaders title pages, the Brownian
+particles, the orbit, the greyscale map). Eighteen stopped with a clean
+error from a later phase: `Pin cannot do that` and `I2C2 cannot open`
+(phase 8), `WIFI not connected` and the TLS and DNS errors (phase 7),
+and files that exist only on a board. Five sound programs stopped with
+`Sound output did not start` after the spawned player printed
+`/dev/sys: No such file or directory` - the players open the device
+themselves, and that is phase 3's work. Three more wanted MOD files
+under `/root`.
+
 ## Not in phase 2
 
 * `INPUT` reads the terminal's cooked line, so a program typing a name
