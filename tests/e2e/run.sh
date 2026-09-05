@@ -63,8 +63,10 @@ check() {			# check <name> <got> <golden>
 
 # ---- gfx1.bas: MODE 2 through mmbc -------------------------------------------
 # fccbuild.sh honours BIN (this build's cc0/cc1/cc2) and W, and takes
-# the translator from MMB2C.
-if ! BIN=$BIN W=$W MMB2C=$BIN/mmbc bash "$M/fcc/fccbuild.sh" "$D/gfx1.bas" > "$W/gfx1.build.log" 2>&1; then
+# the translator from MMB2C.  It is run FROM the work directory: cc2
+# writes .symtmp where it stands, and that belongs here, not wherever
+# the caller was.
+if ! ( cd "$W" && BIN=$BIN W=$W MMB2C=$BIN/mmbc bash "$M/fcc/fccbuild.sh" "$D/gfx1.bas" ) > "$W/gfx1.build.log" 2>&1; then
 	echo "FAIL  gfx1 (build)"; tail -5 "$W/gfx1.build.log"; fail=1
 else
 	( cd "$W" && "$BIN/bcrun" "$W/gfx1.bc" > "$W/gfx1.stdout" 2>&1 )
@@ -79,7 +81,7 @@ fi
 # The program includes pico_ioctl.h; fccbuild's include path has the
 # work directory in it, so the header goes there.
 cp "$FZ/Kernel/platform/platform-rpipico/pico_ioctl.h" "$W/"
-if ! BIN=$BIN W=$W bash "$M/fcc/fccbuild.sh" "$D/gfxc.c" > "$W/gfxc.build.log" 2>&1; then
+if ! ( cd "$W" && BIN=$BIN W=$W bash "$M/fcc/fccbuild.sh" "$D/gfxc.c" ) > "$W/gfxc.build.log" 2>&1; then
 	echo "FAIL  gfxc (build)"; tail -5 "$W/gfxc.build.log"; fail=1
 else
 	( cd "$W" && "$BIN/bcrun" "$W/gfxc.bc" > "$W/gfxc.out" 2>&1 )
