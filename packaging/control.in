@@ -6,11 +6,13 @@ Architecture: @ARCH@
 Installed-Size: @SIZE@
 Maintainer: Peter Mather <uktailwind@gmail.com>
 Homepage: https://github.com/UKTailwind/FUZIX
+Depends: libc6 (>= 2.34), libstdc++6, libgcc-s1, libx11-6, libxrandr2
 Description: Pico Computer 3 BASIC environment for a PC
  The Pico Computer 3's MMBasic toolchain, hosted on Linux: mmbc
  translates MMBasic to C, cc compiles it to bytecode, bcrun runs it,
  and pc3d shows the PC3's screen in a window and takes its keyboard.
- The programs are the PC3's own, built for a PC and statically linked.
+ The programs are the PC3's own, built for a PC.  The tools are
+ statically linked; pc3d uses the system's X11 libraries.
  .
  Run `pc3` for a shell with the tools on the PATH, or `pc3 cc -r
  prog.bas` to build and run a program.  Examples are in

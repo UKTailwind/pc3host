@@ -27,9 +27,18 @@ dpkg-deb -I "$DEB" | sed -n '/Package:/,/Installed-Size:/p'
 echo "bin: $(ls "$P/bin" | tr '\n' ' ')"
 echo "lib/cc: $(ls "$P/lib/cc" | tr '\n' ' ') ($(ls "$P/lib/cc/include" | wc -l) headers)"
 echo "share: $(ls "$P/share" | tr '\n' ' '); mmb2c: $(find "$P/share/mmb2c" -type f | wc -l) files"
-for f in bcrun cc pc3d mmbc mmedit; do
+for f in bcrun cc mmbc mmedit; do
 	file "$P/bin/$f" | grep -q "statically linked" && echo "$f: static" || { echo "$f: NOT static"; fail=1; }
 done
+# pc3d is dynamic on purpose (libX11's dlopen of libXcursor); what it
+# may not do is need a glibc newer than 2.34 or a libstdc++ newer than
+# Ubuntu 22.04's (GLIBCXX_3.4.30, GCC 12)
+file "$P/bin/pc3d" | grep -q "dynamically linked" && echo "pc3d: dynamic" || { echo "pc3d: NOT dynamic"; fail=1; }
+glibc_max=$(objdump -T "$P/bin/pc3d" | grep -o "GLIBC_[0-9.]*" | sort -t. -k2,2n -u | tail -1)
+cxx_max=$(objdump -T "$P/bin/pc3d" | grep -o "GLIBCXX_[0-9.]*" | sort -t. -k3,3n -u | tail -1)
+echo "pc3d needs $glibc_max ${cxx_max:-no GLIBCXX}; shared libraries: $(objdump -p "$P/bin/pc3d" | awk '/NEEDED/{printf "%s ", $2}')"
+case $glibc_max in GLIBC_2.3[0-4]|GLIBC_2.[12]*) ;; *) echo "FAIL  pc3d needs $glibc_max (must be <= 2.34)"; fail=1;; esac
+case ${cxx_max:-GLIBCXX_3.4} in GLIBCXX_3.4|GLIBCXX_3.4.[0-9]|GLIBCXX_3.4.[12][0-9]|GLIBCXX_3.4.30) ;; *) echo "FAIL  pc3d needs $cxx_max (must be <= 3.4.30)"; fail=1;; esac
 
 export PC3_SOCKET=$T/pc3d.sock PC3_AUTOSTART=0
 unset PC3_DISPLAY

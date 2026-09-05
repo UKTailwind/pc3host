@@ -182,26 +182,26 @@ target_compile_definitions(display_seam PRIVATE PC3_HOST)
 target_include_directories(display_seam PRIVATE ${PLAT_DIR})
 target_compile_options(display_seam PRIVATE -g -Wall -Wextra -Wno-unused-parameter)
 
+# ---- the C standard, and why it is pinned --------------------------------------
+# gcc 15 compiles C23 by default, and against glibc 2.38+ headers that
+# turns strtol and friends into __isoc23_strtol, a symbol only glibc
+# 2.38 has.  In C11 the same call is plain strtol, and a dynamic binary
+# built here then asks for nothing newer than GLIBC_2.34 - which every
+# Ubuntu from 22.04 on has.  MiniFB pins C11 itself.
+set(CMAKE_C_STANDARD 11)
+set(CMAKE_C_EXTENSIONS ON)
+
 # ---- static linking, for a package that runs on any glibc --------------------
 # Built here against a recent glibc, a dynamic binary would demand that
-# glibc on the machine it is installed on.  Static, it demands nothing.
-# The X11 libraries are static too, so pc3d needs only an X server.
-# Declared before MiniFB is configured: its X11 lookup would otherwise
-# record libXrandr.so, which a static link refuses.
-option(PC3_STATIC "Link every program statically" OFF)
-if(PC3_STATIC)
-    # FindX11 builds its imported targets (X11::X11, X11::Xrandr and
-    # what they depend on) from these cache variables; given the
-    # archives, the targets link the archives.
-    foreach(x X11 Xrandr Xrender Xext)
-        find_library(PC3_${x}_A NAMES lib${x}.a)
-        if(PC3_${x}_A)
-            set(X11_${x}_LIB ${PC3_${x}_A} CACHE FILEPATH "static ${x} for pc3d" FORCE)
-        else()
-            message(FATAL_ERROR "PC3_STATIC needs lib${x}.a (the X11 development packages)")
-        endif()
-    endforeach()
-endif()
+# glibc on the machine it is installed on.  Static, it demands nothing -
+# so every TOOL is linked static for the package.  pc3d is NOT: libX11
+# dlopen()s the system's libXcursor to draw the cursor MiniFB creates at
+# window open, and a statically linked glibc can only dlopen libraries
+# built against the same glibc.  On the first machine with a different
+# glibc the window appeared and the server died.  So pc3d is an ordinary
+# dynamic program, and the package depends on the X11 libraries and on
+# GLIBC_2.34 (see the C standard note above).
+option(PC3_STATIC "Link the tools statically (never pc3d)" OFF)
 
 # ---- the device server -------------------------------------------------------
 # MiniFB is the window.  X11 without OpenGL: the server hands it a
@@ -220,11 +220,13 @@ add_subdirectory(ext/minifb EXCLUDE_FROM_ALL)
 # The keyboard is the kernel's decoder too: kbd_decode.c, vendored in
 # the platform directory byte-identical to the MicroPython port's, fed
 # HID boot reports that keyboard.c builds from MiniFB's key events.
+file(READ VERSION PC3_VERSION)
+string(STRIP "${PC3_VERSION}" PC3_VERSION)
 add_executable(pc3d
     server/pc3d.c server/dispatch.c server/disphw.c server/present.c
-    server/window.c server/fontdata.c server/keyboard.c
+    server/window.c server/fontdata.c server/keyboard.c server/crash.c
     ${PLAT_DIR}/display.c ${PLAT_DIR}/fonts.c ${PLAT_DIR}/kbd_decode.c)
-target_compile_definitions(pc3d PRIVATE PC3_HOST)
+target_compile_definitions(pc3d PRIVATE PC3_HOST PC3D_VERSION="${PC3_VERSION}")
 target_include_directories(pc3d PRIVATE server server/kstub proto ${PLAT_DIR}
                                         ext/minifb/include)
 target_compile_options(pc3d PRIVATE -O2 -g -Wall -Wextra -Wno-unused-parameter)
@@ -243,10 +245,11 @@ if(PC3_STATIC)
               playsnd pc3key display_seam)
         target_link_options(${t} PRIVATE -static)
     endforeach()
-    target_link_options(pc3d PRIVATE -static)
-    # what libX11 and libXrandr need underneath them, by name so the
-    # archives are taken
-    target_link_libraries(pc3d PRIVATE Xrender Xext xcb Xau Xdmcp)
+    # pc3d stays dynamic (see the note at the option), C++ runtime
+    # included: this box's static libstdc++ references glibc 2.36 and
+    # 2.38 symbols (arc4random, the C23 strtoul) that the shared one on
+    # the target does not impose.  MiniFB's C++ needs only symbols every
+    # libstdc++6 has had for a decade.
 endif()
 
 # ---- installing ------------------------------------------------------------------

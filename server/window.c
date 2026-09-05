@@ -11,6 +11,7 @@
  */
 
 #include <stdio.h>
+#include <stdlib.h>
 #include <stdbool.h>
 #include <MiniFB.h>
 #include "pc3d.h"
@@ -43,6 +44,13 @@ int win_open(int w, int h)
 		keyboard_reset();
 	}
 	if (!win) {
+		/* The desktop's input method (ibus, fcitx) has no part here:
+		 * this server IS a keyboard decoder, and takes raw key events.
+		 * MiniFB opens an X input method unconditionally; with the
+		 * modifier set to none that is a local no-op rather than a
+		 * connection to whatever the desktop runs, which a statically
+		 * linked binary is better off not making. */
+		setenv("XMODIFIERS", "@im=none", 1);
 		win = mfb_open_ex("Pico Computer 3", (unsigned)w, (unsigned)h, 0);
 		if (!win) {
 			fprintf(stderr, "pc3d: cannot open a %dx%d window\n", w, h);

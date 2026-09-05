@@ -91,6 +91,31 @@ The board's `bcrun.o`, `ccbc.o` and `mmedit.o`, compiled from before
 and after with the tree's ARM flags and stripped of debug information,
 are byte-identical.
 
+## The package, and the first machine it met
+
+`packaging/make-deb.sh` builds the Debian package with every tool
+statically linked, so the tools run on any Linux of the architecture
+regardless of its C library. The first version linked the server
+statically too, X11 libraries and all, and on the first real machine
+the window appeared blank and the server died. The cause, found by
+looking for `dlopen` in the static libX11: MiniFB creates a blank
+cursor at window open, libX11 answers a cursor creation by loading the
+system's libXcursor at run time, and a statically linked glibc can only
+`dlopen` libraries built against the same glibc, which the build
+machine's was and the target's was not. So `pc3d` is an ordinary
+dynamic program, C++ runtime included, and the package depends on the
+X11 libraries, libstdc++6 and glibc 2.34, Ubuntu 22.04's or later.
+Getting to 2.34 rather than 2.38 took two steps: no `_GNU_SOURCE` in
+the server's sources, because with glibc 2.38+ headers it renames
+`strtol` to a symbol only 2.38 has; and the system's libstdc++ rather
+than the static one, whose objects on this box reference `arc4random`
+(2.36) and the same renamed `strtoul`.
+
+The server now installs handlers for the fatal signals (`server/crash.c`)
+that print the signal and the stack's return addresses before dying,
+so a crash on a machine the author cannot see leaves a note that
+`addr2line` turns into lines. `pc3d --version` names the build.
+
 ## Tests
 
 `e2e-display` gained `keys.bas`: a program with no terminal runs

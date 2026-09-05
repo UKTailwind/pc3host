@@ -34,7 +34,8 @@
  * the byte it became, for checking a layout.
  */
 
-#define _GNU_SOURCE
+/* No _GNU_SOURCE: it would make glibc 2.38+ headers rename strtol to a
+ * symbol older systems lack, and everything used here is POSIX. */
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -516,8 +517,13 @@ int main(int argc, char **argv)
 	struct pollfd pfd[PC3D_MAX_CLIENTS + 1];
 	struct sigaction sa;
 
+	crash_handlers();
 	sock_path[0] = 0;
 	for (i = 1; i < argc; i++) {
+		if (!strcmp(argv[i], "--version")) {
+			printf("pc3d %s\n", PC3D_VERSION);
+			return 0;
+		}
 		if (!strcmp(argv[i], "--headless"))
 			headless = 1;
 		else if (!strcmp(argv[i], "--verbose") || !strcmp(argv[i], "-v"))
@@ -564,8 +570,8 @@ int main(int argc, char **argv)
 	signal(SIGPIPE, SIG_IGN);
 
 	if (pc3d_verbose)
-		fprintf(stderr, "pc3d: listening on %s%s, keyboard layout %s\n",
-			sock_path, headless ? " (headless)" : "",
+		fprintf(stderr, "pc3d %s: listening on %s%s, keyboard layout %s\n",
+			PC3D_VERSION, sock_path, headless ? " (headless)" : "",
 			keyboard_layout_name());
 
 	next_tick = now_us() + frame_period();
