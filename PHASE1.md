@@ -1,0 +1,169 @@
+# Phase 1: the display server on Linux
+
+What REVIEW.md section 6 asked of phase 1, and where it stands. Dated
+2026-09-05.
+
+## What works
+
+A BASIC program translated by `mmbc`, compiled by `cc` and run by
+`bcrun` draws on a PC. So does a C program written for the PC3 against
+`pico_ioctl.h` and compiled by the same `cc`. The picture appears in a
+window sized to the raster the PC3 would be scanning out, drawn by the
+kernel's own display core, and `saveimage` takes it from a separate
+process afterwards exactly as on the board, because the picture lives
+in the server and not in the program.
+
+```
+pc3d &                          # the display server; a window appears
+mmbc prog.bas -o prog.c         # or cc -r prog.bas once phase 5 wires it
+bcrun prog.bc                   # draws in the window
+saveimage screen.bmp            # the screen, from another process
+```
+
+A program does not have to start the server: the first open of the
+display starts `pc3d` if none is listening, found beside the program or
+on the PATH, and detached so it outlives the program. `PC3_DISPLAY=off`
+makes the display absent, which is how the gates keep running
+display-less, and `PC3_SOCKET`, `PC3_AUTOSTART` and `PC3D` are the
+environment (`proto/pc3proto.h`).
+
+The window shows the 640×480 raster at twice its size, 1280×960, so a
+MODE 2 pixel, which is already 2×2 in that raster, is four window
+pixels across, and the console's 8×12 cells are 16×24. `--scale N`
+(1 to 4) changes it. The 1024×768 raster of the BBC modes is shown one
+to one; doubling it would want a 2048×1536 window. The scale is applied
+after the expander has done its work, so every window pixel is still
+one the PC3's scanout would have made, only repeated.
+
+`pc3d --snapshot FILE.ppm` writes the window's pixels, scale and all,
+each time a client disconnects: a way for a script, or a person with no
+window, to see what the window showed.
+
+## The pieces
+
+| piece | where | what |
+|---|---|---|
+| wire protocol | `proto/pc3proto.h` | framing plus flattened forms of the six pointer-bearing structures; everything else is `pico_ioctl.h`'s own bytes |
+| client library | `client/pc3client.c` | `pc3_sys_open`, `pc3_sys_ioctl`, `pc3_sys_close`; marshalling per code; the PSRAM arena, `PICOIOC_RANDOM` and `PICOIOC_LIBM` answered locally |
+| server | `server/pc3d.c` | one thread: `poll()` over the socket and every client, a frame tick at the raster's rate (59.5 Hz VGA, 70.1 Hz XGA), `VSYNC` and `VSYNCTRY` answered from the tick, per-connection state released on disconnect |
+| dispatch | `server/dispatch.c` | `misc.c`'s ioctl switch for the 28 graphics codes, `INFO`, `CONMIRROR`, `KEYDOWN` (zeros until phase 2) and `BOARD`; same limits, same errno |
+| hardware half | `server/disphw.c` | the `display_priv.h` hooks: framebuffers as arrays, a raster note, no barrier, no wait |
+| presenter | `server/present.c` | the five scanline expanders, including MODE 0's 5:8 coverage blend copied from the kernel's LUT builder |
+| window | `server/window.c` | MiniFB, X11 without OpenGL; a raster change closes and reopens the window |
+| kernel code compiled in | `display.c`, `fonts.c` | unchanged, from the FUZIX tree; `fonts.c` sees `<kernel.h>` and `<kdata.h>` through `server/kstub/` |
+
+## The seam in the FUZIX tree
+
+Every program reached the hardware through `open("/dev/sys")` and
+`ioctl()`. Those two calls now have one door each, and on the board the
+doors are the calls they replaced:
+
+* `mmb_runtime.c`: `mm_sys_open()` and `mm_sys_ioctl()` wrap the five
+  opens and forty-eight ioctls on the system device. `/dev/gpio` is
+  untouched; the pin path has no host.
+* `bcrun.c`: a bytecode program's `open` of `/dev/sys`, and `ioctl` and
+  `close` on the descriptor it gets, go to the client library under
+  `PC3_HOST`. The pointer-bearing structures a 32-bit program hands over
+  are rebuilt for the 64-bit host in `host_sys_ioctl`.
+* `utils/pc3sys.h`: the same door for the image programs (`loadjpg`,
+  `loadpng`, `loadimage`, `saveimage`, the PNG arena client).
+
+`PC3_HOST` is the one define, shared with `display_priv.h`. The pc3host
+`bcrun` is built with it plus `MM_PC3` and `MM_HOSTED_ONLY`: the first
+is the board's own define and selects the runtime's real hardware paths
+(the gate build in `Makefile.host` leaves it off and gets the
+display-less runtime); the second says there is no kernel behind them,
+so the maths table keeps the local functions instead of asking for the
+kernel's.
+
+## What the host found in the runtime
+
+Three things the board could never show, all fixed in the FUZIX tree:
+
+1. **The maths table under `MM_HOSTED_ONLY` was empty.** `MM_PC3`
+   empties it for the kernel to fill and `MM_HOSTED_ONLY` skipped the
+   fill, so the first `SIN` would have called a null pointer. The guard
+   on the table now matches the guard on the fill.
+2. **`mm_us_fast` read TIMER0.** The pixel queue's age bound was a load
+   from `0x400B0028`, which on a PC is a fault. Under `PC3_HOST` it is
+   the monotonic clock. This was the segmentation fault the first run
+   produced.
+3. **Seven mirror structures and two colour arrays used `long`.** They
+   copy kernel structures whose fields are 32 bits; `long` is 32 on the
+   board and 64 on a PC, so the colours handed to a batch were read at
+   the wrong stride (every second pixel black) and the text run's
+   fields were in the wrong places (no text). They are `int` now, which
+   is the type they always were on the board. The ARM cross-compile of
+   `bcrun.o` and the image programs is unchanged in size.
+
+And one in the translation layer: a 32-bit `struct gfx_text` puts its
+pointer at offset 20, not 16, because `fg` is aligned to 4. The C test
+found it.
+
+## Two bcruns
+
+The board's bcrun is built with `MM_PC3`, and with no display attached
+it refuses what the board would refuse: `BLIT`, `SPRITE`, `FRAMEBUFFER`,
+the pins. The gate build in `Makefile.host` leaves `MM_PC3` off and
+gets the display-less runtime, which says "not here" and carries on,
+and that is the shape every `tests/*.expected` was blessed against. The
+first full run of the suite with a board-shaped `bcrun` failed eighteen
+of ninety programs for exactly that reason. So the tree builds both:
+`build/bin/bcrun` is the board shape for running programs, and
+`build/gatebin/bcrun` is the gate shape, beside links to the passes, and
+the fcc gates point there. A board-shaped gate, with expected outputs
+blessed against a headless server, is the natural next step and would
+be a stronger check than either.
+
+## Gates
+
+`ctest` now runs seven tests. The five from phase 0 are unchanged in
+what they prove, with `PC3_DISPLAY=off` in the fcc gates' environment
+and the gate-shaped bcrun. Two are new:
+
+| test | what it proves |
+|---|---|
+| `seam-display` | (phase 0) the display core without the kernel |
+| `e2e-display` | `tests/e2e/run.sh`: a headless `pc3d`; `gfx1.bas` in MODE 2 through `mmbc`, `cc`, `bcrun` and the runtime, its `PIXEL()` readbacks and its screen against goldens; `gfxc.c` in MODE 0 through `cc` and bcrun's libcalls, its `GETPIXEL` and `INFO` output and its screen against goldens |
+
+The goldens were made by this run and looked at before they were kept
+(`tests/e2e/*.golden.bmp`; `bmp2png.py` turns a screen into something a
+viewer opens). The readbacks were checked by hand against the RGB121
+palette: magenta is 16711935, the box fill is 255, the batch reads
+back red, green, blue and white in order.
+
+Also seen, not automated: `pc3d` with a window under WSLg, opening a
+640x480 X11 window and running at sixty frames a second while the
+BASIC program drew into it.
+
+## Not in phase 1, deliberately
+
+* **The console in the window.** `console_gfx()` is a stub and
+  `CONMIRROR` only records. A BASIC program's `PRINT` in a graphics
+  mode already reaches the screen, because the runtime draws it with
+  `GFXIOC_TEXT`; what does not is the shell's own text. The terminal is
+  the text console for now, as the review's two-console mapping says.
+* **Keyboard** (phase 2): `KEYDOWN` answers zeros; `INKEY$` is the
+  terminal.
+* **Sound** (phase 3): the players still open `/dev/sys` directly and
+  fail politely; the sound codes are `ENOTTY`.
+* **`SAVE IMAGE` and `LOAD IMAGE` from BASIC** spawn `/usr/bin/…` by
+  absolute path and so do not find the host binaries yet (phase 5).
+* **`PICOIOC_BOARD` answers 3.** A PC is not a PC3, but a program
+  asking `MM.DEVICE$` wants the machine it was written for. Worth a
+  decision when the console phase gives the host a name of its own.
+* **`GFXIOC_FONTADDR`** hands back a copy of the font mapped below 4G
+  so the 32-bit address fits; Linux only (`MAP_32BIT`), like the arena.
+
+## Building
+
+```
+git submodule update --init
+cmake -S . -B build
+cmake --build build -j8
+ctest --test-dir build
+```
+
+MiniFB is a submodule at `ext/minifb`, built without OpenGL; the server
+links as C++ because MiniFB carries a C++ file. Needs the X11
+development headers.

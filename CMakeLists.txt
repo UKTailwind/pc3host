@@ -6,7 +6,9 @@
 # seam test that proves the display core compiles without the kernel.
 
 cmake_minimum_required(VERSION 3.16)
-project(pc3host C)
+# C throughout; CXX only because MiniFB carries C++ and the server that
+# links it has to be linked as C++.
+project(pc3host C CXX)
 
 # ---- where the shared sources live -----------------------------------------
 # ext/FUZIX is the submodule, pinned to a commit.  A developer working in
@@ -68,12 +70,45 @@ kit_tool(dumptokens ${CC_DIR}/dumptokens.c)
 # layout is exercised, not because it runs from here yet.
 kit_tool(ccbc ${CC_DIR}/ccbc.c)
 
+# ---- the client library: /dev/sys on a PC ----------------------------------
+# What a program opens as /dev/sys and ioctls, this carries to pc3d over
+# a socket.  bcrun (for the runtime and for bytecode programs) and the
+# image programs link it and are built with PC3_HOST, which is the one
+# define the FUZIX sources know for "on a PC, talk to the server".
+add_library(pc3client STATIC client/pc3client.c)
+target_include_directories(pc3client PUBLIC client proto ${PLAT_DIR})
+
 # bcrun carries the mm runtime natively: bcrun_mm.c #includes
 # mmb2c/mmb_runtime.c, hence the include path.  fnum.c comes from the C
 # library source rather than being linked, so %e and %g are the board's.
+# MM_PC3 is the board's define: it selects the runtime's real hardware
+# paths (the gate build in Applications/CC/Makefile.host leaves it off
+# and gets the display-less runtime).  MM_HOSTED_ONLY says there is no
+# kernel behind those paths - keep the local maths table, do not ask
+# for the kernel's.  PC3_HOST routes /dev/sys to the server.
 kit_tool(bcrun ${CC_DIR}/bcrun.c ${LIBS_DIR}/fnum.c)
 target_include_directories(bcrun PRIVATE ${MMB_DIR})
-target_link_libraries(bcrun PRIVATE m)
+target_compile_definitions(bcrun PRIVATE PC3_HOST MM_PC3 MM_HOSTED_ONLY)
+target_link_libraries(bcrun PRIVATE pc3client m)
+
+# The gates' bcrun: the display-less shape Makefile.host builds, which
+# is what every tests/*.expected was blessed against.  The board-shaped
+# bcrun above, run with no display, refuses what the board would refuse
+# - BLIT, SPRITE, the pins - where the display-less runtime says "not
+# here" and carries on, so the two cannot share expected output.  It is
+# named bcrun in its own directory beside links to the passes, which is
+# the layout fcctests.sh takes as BIN.
+set(GATEBIN ${CMAKE_BINARY_DIR}/gatebin)
+kit_tool(bcrun-gate ${CC_DIR}/bcrun.c ${LIBS_DIR}/fnum.c)
+target_include_directories(bcrun-gate PRIVATE ${MMB_DIR})
+target_link_libraries(bcrun-gate PRIVATE m)
+set_target_properties(bcrun-gate PROPERTIES OUTPUT_NAME bcrun
+                                            RUNTIME_OUTPUT_DIRECTORY ${GATEBIN})
+add_custom_command(TARGET bcrun-gate POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E create_symlink ${BIN}/cc0 ${GATEBIN}/cc0
+    COMMAND ${CMAKE_COMMAND} -E create_symlink ${BIN}/cc1 ${GATEBIN}/cc1
+    COMMAND ${CMAKE_COMMAND} -E create_symlink ${BIN}/cc2 ${GATEBIN}/cc2)
+add_dependencies(bcrun-gate cc0 cc1 cc2)
 
 # Fuzix's cpp.  fccbuild.sh uses gcc -E on the host today; this is what
 # ccbc drives, and what a PC without gcc will need.
@@ -100,21 +135,27 @@ target_include_directories(mmedit PRIVATE ${ED_DIR})
 target_compile_options(mmedit PRIVATE -O0 -g)
 
 # ---- the programs around a program: loaders and players ------------------
-# They open /dev/sys and ioctl it; on a host that fails politely until
-# the client library (phase 1) stands in for the kernel.  Building them
-# here is what keeps them compiling as the shared code moves.
+# The image programs open /dev/sys through pc3sys.h and so reach the
+# server; the players still open it directly and fail politely until
+# phase 3.  Building them all here is what keeps them compiling as the
+# shared code moves.
 function(pc3_util name)
     add_executable(${name} ${ARGN})
     target_compile_options(${name} PRIVATE -std=gnu99 -O2 -Wall -Wno-unused)
     target_include_directories(${name} PRIVATE ${UTIL_DIR} ${PLAT_DIR})
 endfunction()
+function(pc3_image name)
+    pc3_util(${name} ${ARGN})
+    target_compile_definitions(${name} PRIVATE PC3_HOST)
+    target_link_libraries(${name} PRIVATE pc3client)
+endfunction()
 
-pc3_util(loadjpg   ${UTIL_DIR}/loadjpg.c ${UTIL_DIR}/picojpeg.c)
-pc3_util(loadpng   ${UTIL_DIR}/loadpng.c ${UTIL_DIR}/upng.c ${UTIL_DIR}/upng_pc3.c)
+pc3_image(loadjpg   ${UTIL_DIR}/loadjpg.c ${UTIL_DIR}/picojpeg.c)
+pc3_image(loadpng   ${UTIL_DIR}/loadpng.c ${UTIL_DIR}/upng.c ${UTIL_DIR}/upng_pc3.c)
 set_source_files_properties(${UTIL_DIR}/upng.c PROPERTIES
     COMPILE_DEFINITIONS UPNG_NO_FILE)      # as utils/Makefile does
-pc3_util(loadimage ${UTIL_DIR}/loadimage.c)
-pc3_util(saveimage ${UTIL_DIR}/saveimage.c)
+pc3_image(loadimage ${UTIL_DIR}/loadimage.c)
+pc3_image(saveimage ${UTIL_DIR}/saveimage.c)
 pc3_util(playmp3   ${UTIL_DIR}/playmp3.c)
 pc3_util(playwav   ${UTIL_DIR}/playwav.c)
 pc3_util(playflac  ${UTIL_DIR}/playflac.c)
@@ -135,24 +176,57 @@ target_compile_definitions(display_seam PRIVATE PC3_HOST)
 target_include_directories(display_seam PRIVATE ${PLAT_DIR})
 target_compile_options(display_seam PRIVATE -g -Wall -Wextra -Wno-unused-parameter)
 
+# ---- the device server -------------------------------------------------------
+# MiniFB is the window.  X11 without OpenGL: the server hands it a
+# buffer already at the raster's size, so nothing needs scaling, and
+# that is the path with the fewest libraries between us and the screen.
+set(MINIFB_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
+set(MINIFB_BUILD_VERSION_INFO OFF CACHE BOOL "" FORCE)
+set(MINIFB_USE_OPENGL_API OFF CACHE BOOL "" FORCE)
+set(MINIFB_USE_WAYLAND_API OFF CACHE BOOL "" FORCE)
+add_subdirectory(ext/minifb EXCLUDE_FROM_ALL)
+
+# pc3d plays the kernel: the kernel's own display core and font table
+# compile into it (display.c, fonts.c), against disphw.c's hooks and
+# the two stub headers in server/kstub that stand in for <kernel.h>
+# and <kdata.h>.  dispatch.c is misc.c's ioctl switch for a PC.
+add_executable(pc3d
+    server/pc3d.c server/dispatch.c server/disphw.c server/present.c
+    server/window.c server/fontdata.c
+    ${PLAT_DIR}/display.c ${PLAT_DIR}/fonts.c)
+target_compile_definitions(pc3d PRIVATE PC3_HOST)
+target_include_directories(pc3d PRIVATE server server/kstub proto ${PLAT_DIR}
+                                        ext/minifb/include)
+target_compile_options(pc3d PRIVATE -O2 -g -Wall -Wextra -Wno-unused-parameter)
+target_link_libraries(pc3d PRIVATE minifb X11)
+set_target_properties(pc3d PROPERTIES LINKER_LANGUAGE CXX)
+
 # ---- the gates ---------------------------------------------------------------
 # Today's gates, run against THIS build's binaries.  They live in the
 # FUZIX tree and take the binaries by environment (BIN, MMBC, MMB2C);
 # cc2 writes .symtmp in the working directory, so the fcc gates each get
-# their own and never run together.
+# their own and never run together.  PC3_DISPLAY=off keeps them the
+# display-less runs their .expected files were blessed as: with a
+# server answering, PIXEL() would read real pixels back.
 enable_testing()
 set(GATE ${CMAKE_BINARY_DIR}/gate)
 
 add_test(NAME seam-display COMMAND display_seam)
 
 add_test(NAME fcc-gate
-    COMMAND ${CMAKE_COMMAND} -E env BIN=${BIN} W=${GATE}/fcc
+    COMMAND ${CMAKE_COMMAND} -E env BIN=${GATEBIN} W=${GATE}/fcc PC3_DISPLAY=off
             bash ${MMB_DIR}/fcc/fcctests.sh
     WORKING_DIRECTORY ${GATE}/fcc)
 add_test(NAME fcc-gate-mmbc
-    COMMAND ${CMAKE_COMMAND} -E env BIN=${BIN} W=${GATE}/fccm MMB2C=${BIN}/mmbc
-            bash ${MMB_DIR}/fcc/fcctests.sh
+    COMMAND ${CMAKE_COMMAND} -E env BIN=${GATEBIN} W=${GATE}/fccm MMB2C=${BIN}/mmbc
+            PC3_DISPLAY=off bash ${MMB_DIR}/fcc/fcctests.sh
     WORKING_DIRECTORY ${GATE}/fccm)
+
+# The end-to-end gate: programs against a headless server, readbacks
+# and screens against goldens (tests/e2e/run.sh).
+add_test(NAME e2e-display
+    COMMAND bash ${CMAKE_SOURCE_DIR}/tests/e2e/run.sh ${BIN} ${FUZIX_ROOT} ${GATE}/e2e)
+set_tests_properties(e2e-display PROPERTIES TIMEOUT 300 RESOURCE_LOCK symtmp LABELS e2e)
 add_test(NAME cgate
     COMMAND ${CMAKE_COMMAND} -E env MMBC=${BIN}/mmbc W=${GATE}/cgate
             bash ${MMB_DIR}/mmbc/cgate.sh

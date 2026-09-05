@@ -1,0 +1,77 @@
+/*
+ * pc3d.h - the PC3 device server's own view of things.
+ *
+ * The server plays the kernel's part for the display: it owns the
+ * framebuffers, the window and the per-connection state, and it answers
+ * the ioctl codes as misc.c does.  display.c (the kernel's portable
+ * display core) and fonts.c compile into it unchanged, against the
+ * hooks in disphw.c and the two stub kernel headers in kstub/.
+ */
+#ifndef PC3D_H
+#define PC3D_H
+
+#include <stdint.h>
+#include <stddef.h>
+
+/* The process table entry, as far as the display core needs one: who
+ * owns a framebuffer or a font, and whose child a caller is.  The
+ * kernel's struct p_tab is much more; the core only ever takes its
+ * address and asks for p_pptr. */
+struct p_tab {
+	struct p_tab *p_pptr;
+	int p_pid;
+};
+
+#define PC3D_MAX_CLIENTS 32
+#define PC3D_UFONTS 7			/* fonts 10-16, as fonts.c */
+
+struct client {
+	struct p_tab pt;		/* FIRST: the core's handle is &pt */
+	int fd;				/* -1 = free slot */
+	int ppid;
+	int hello;			/* HELLO seen */
+	int mirror;			/* CONMIRROR: the display half is on */
+	int vsync_wait;			/* 0 none; 1 VSYNC; 2 VSYNCTRY */
+	unsigned char *ufont[PC3D_UFONTS];	/* copies of FONTDEF data */
+	unsigned char *buf;		/* request payload */
+	size_t bufcap;
+};
+
+/* What a request produced.  data/len is the reply payload; owned is
+ * freed after sending; defer means "answer at the next frame". */
+struct reply {
+	int32_t ret;
+	int32_t err;
+	const void *data;
+	uint32_t len;
+	void *owned;
+	int defer;
+};
+
+/* dispatch.c: misc.c's plt_dev_ioctl, for the codes the display
+ * server answers. */
+void pc3d_dispatch(struct client *c, uint16_t code, uint32_t arg,
+		   const unsigned char *pl, uint32_t len, struct reply *r);
+/* a connection ended: give back what it held */
+void pc3d_client_gone(struct client *c);
+
+/* disphw.c: the hooks display_priv.h asks for, and the framebuffers */
+void disphw_init(void);
+int  disphw_raster(void);		/* DISP_RASTER_VGA / XGA now */
+
+/* present.c: the framebuffer as the monitor would show it */
+void present_set_scale(int s);		/* window = 640x480 raster times s (1-4) */
+void present_size(int *w, int *h);	/* window size for the live mode */
+void present_frame(uint32_t *out);	/* fill out[w*h] as 0x00RRGGBB */
+const char *present_mode_name(void);
+
+/* window.c: MiniFB */
+int  win_open(int w, int h);		/* (re)opens to this size; 0 ok */
+int  win_present(const uint32_t *buf, int w, int h);	/* -1 = closed */
+int  win_pump(void);			/* events only; -1 = closed */
+void win_title(const char *t);
+void win_close(void);
+
+extern int pc3d_verbose;
+
+#endif /* PC3D_H */

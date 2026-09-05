@@ -25,10 +25,25 @@ Every tool is compiled from where it lives in the FUZIX tree, which is
 the submodule at `ext/FUZIX`; nothing is copied here. Pass
 `-DFUZIX_ROOT=<path>` to build against a live FUZIX checkout instead.
 
+## Running a program
+
+```
+build/bin/pc3d &                              # the display, in a window
+build/bin/mmbc prog.bas -o prog.c             # translate
+# compile with cc to prog.bc (tests/e2e/run.sh shows the fccbuild.sh call)
+build/bin/bcrun prog.bc                       # draws in the window
+build/bin/saveimage screen.bmp                # the screen, from another process
+```
+
+The server starts itself when a program first opens the display, so the
+first line is optional. `PC3_DISPLAY=off` runs a program with no display.
+
 ## Where things stand
 
-Phase 0 is done: the build tree, today's gates running against it, and
-the first kernel seam (the display driver's portable half compiles and
-runs without the kernel). The device server, the client library, the
-keyboard, sound and Windows are phases 1 to 6 in the review; a PicoMite
-on a USB serial link for real I/O is phase 8.
+Phase 0 built the tree and the gates and cut the first kernel seam.
+Phase 1 is the display server: a BASIC program, or a C program written
+against `pico_ioctl.h`, draws in a window through the kernel's own
+display core, on Linux and under WSLg. See [PHASE0.md](PHASE0.md) and
+[PHASE1.md](PHASE1.md). The keyboard, sound, the remaining programs,
+Windows and networking are phases 2 to 7 in the review; a PicoMite on a
+USB serial link for real I/O is phase 8.

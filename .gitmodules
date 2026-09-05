@@ -2,3 +2,6 @@
 	path = ext/FUZIX
 	url = https://github.com/UKTailwind/FUZIX
 	branch = pc3
+[submodule "ext/minifb"]
+	path = ext/minifb
+	url = https://github.com/emoon/minifb
