@@ -315,6 +315,7 @@ install(TARGETS cc0 cc1 cc2 RUNTIME DESTINATION lib/cc)
 install(PROGRAMS packaging/pc3 DESTINATION bin)
 install(FILES ${PC3_CC_HEADERS} DESTINATION lib/cc/include)
 install(FILES README.md REVIEW.md PHASE0.md PHASE1.md PHASE2.md PHASE3.md
+              PHASE4.md PHASE5.md
               ${PLAT_DIR}/PC3-C-MANUAL.md ${MMB_DIR}/README.md
         DESTINATION share/doc/pc3host)
 file(GLOB PC3_MAN ${FUZIX_ROOT}/Applications/man1/bcrun.1
@@ -378,6 +379,27 @@ add_test(NAME fcc-gate-mmbc
 add_test(NAME e2e-display
     COMMAND bash ${CMAKE_SOURCE_DIR}/tests/e2e/run.sh ${BIN} ${FUZIX_ROOT} ${GATE}/e2e)
 set_tests_properties(e2e-display PROPERTIES TIMEOUT 300 RESOURCE_LOCK symtmp LABELS e2e)
+
+# Phase 4: the image round trips (SAVE IMAGE through saveimage, LOAD
+# IMAGE through loadimage) against goldens (tests/images), the tree's
+# own gate for loadimage's sprite decoder, and the whole test corpus
+# with a display against its known non-identical set.
+add_test(NAME images
+    COMMAND bash ${CMAKE_SOURCE_DIR}/tests/images/run.sh ${BIN} ${FUZIX_ROOT} ${GATE}/images)
+set_tests_properties(images PROPERTIES TIMEOUT 600 RESOURCE_LOCK symtmp LABELS e2e)
+add_test(NAME bmptest COMMAND sh ${PLAT_DIR}/bmptest.sh)
+set_tests_properties(bmptest PROPERTIES TIMEOUT 300 LABELS gates)
+add_test(NAME corpus-display
+    COMMAND ${CMAKE_COMMAND} -E env KNOWN=${CMAKE_SOURCE_DIR}/tests/sweep/corpus.known
+            bash ${CMAKE_SOURCE_DIR}/tests/sweep/run-corpus.sh ${BIN} ${FUZIX_ROOT} ${GATE}/corpus)
+set_tests_properties(corpus-display PROPERTIES TIMEOUT 1800 RESOURCE_LOCK symtmp LABELS e2e)
+
+# Phase 5: the editor through a pseudo-terminal - type, F1, then F2
+# compiling and running through this build's cc (tests/editor).
+add_test(NAME editor-pty
+    COMMAND python3 ${CMAKE_SOURCE_DIR}/tests/editor/mmedit_pty.py
+            ${BIN}/mmedit ${BIN}/cc ${GATE}/editor)
+set_tests_properties(editor-pty PROPERTIES TIMEOUT 180 RESOURCE_LOCK symtmp LABELS e2e)
 add_test(NAME cgate
     COMMAND ${CMAKE_COMMAND} -E env MMBC=${BIN}/mmbc W=${GATE}/cgate
             bash ${MMB_DIR}/mmbc/cgate.sh

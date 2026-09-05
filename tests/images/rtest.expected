@@ -1,0 +1,4 @@
+w1.bmp: No such file or directory
+
+Error: the program reported a failure
+exit 1

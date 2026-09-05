@@ -64,8 +64,12 @@ window's keys reach `INKEY$` and `KEYDOWN` through the PC3's own
 decoder, merged with the terminal's. Phase 3 is sound: the kernel's own
 synths and PCM ring, compiled into the server and played through
 miniaudio, so `PLAY SOUND`, `PLAY TONE` and the WAV, MP3, FLAC and MOD
-players work as they do on the board. See [PHASE0.md](PHASE0.md),
-[PHASE1.md](PHASE1.md), [PHASE2.md](PHASE2.md) and
-[PHASE3.md](PHASE3.md). The remaining programs, Windows and networking
-are phases 4 to 7 in the review; a PicoMite on a USB serial link for
-real I/O is phase 8.
+players work as they do on the board. Phase 4 is the programs around
+a program: the image loaders and `saveimage` (now reading rows, not
+pixels), sprites down their pipe, `SYSTEM`, gated by the image round
+trips. Phase 5 is the editor and the driver: `mmedit prog.bas` then F2
+builds and runs, as the manual says, through a compiler you can name.
+See [PHASE0.md](PHASE0.md), [PHASE1.md](PHASE1.md),
+[PHASE2.md](PHASE2.md), [PHASE3.md](PHASE3.md), [PHASE4.md](PHASE4.md)
+and [PHASE5.md](PHASE5.md). Windows and networking are phases 6 and 7
+in the review; a PicoMite on a USB serial link for real I/O is phase 8.

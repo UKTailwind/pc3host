@@ -1,0 +1,24 @@
+# Programs in the FUZIX test corpus that are NOT identical to their
+# .expected files when run with a display (tests/sweep/run-corpus.sh).
+# Four are the files' own limitation: the .expected was blessed on a
+# host with no display and no sound, and with a server the program
+# reads something real - mminfo's lock state, printat's cursor escapes,
+# and the one legitimate PLAY SOUND in play and strargs, which the
+# goldens expect to fail with "Sound output did not start" and which
+# now plays.  Ten are the pin and peripheral tests, which a PC refuses
+# until phase 8.  A name leaving this list is progress; a name arriving
+# is a fault.
+mminfo
+printat
+play
+strargs
+countpin
+gpio
+i2c2
+pinint
+pioout
+port
+pulse
+pulsin
+pwm
+waitint
