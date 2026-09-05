@@ -91,6 +91,25 @@ The board's `bcrun.o`, `ccbc.o` and `mmedit.o`, compiled from before
 and after with the tree's ARM flags and stripped of debug information,
 are byte-identical.
 
+## What a person found that the test could not
+
+The first real user reported that `KEYDOWN` worked perfectly and
+`INKEY$` answered only when a key was held long enough to auto-repeat.
+Reproduced by typing through the X server into `keydemo.bas`: eight
+slow taps, one shown. `KEYDOWN` drains the console queue before it
+answers, as MMBasic's does; the demo asks it six times a pass, and on a
+PC each ask is a round trip to the server, which answers when its frame
+is done, the same instant it hands over the keyboard's bytes. So a tap
+typed during one call was drained by the next, every time. The
+automated test never saw this because `pc3key` injects keys between the
+program's calls, not during them.
+
+The fix is in the runtime under `PC3_HOST`: the kernel's one-ioctl
+snapshot of the held-key table is kept for two milliseconds, so a burst
+of `KEYDOWN` calls costs one drain and one crossing, which is what it
+costs on the board, where a call is microseconds. Eight taps, eight
+shown. The board's `mm_keydown` is untouched.
+
 ## The package, and the first machine it met
 
 `packaging/make-deb.sh` builds the Debian package with every tool
