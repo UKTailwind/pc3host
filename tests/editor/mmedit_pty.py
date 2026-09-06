@@ -142,6 +142,39 @@ def main():
     check("the program ran and printed on the terminal",
           ran and out.find(b"\nhello from mmedit") > announced)
     check("the compile-and-run exited 0", rc == 0)
+    # ---- a file that cannot be saved where it is -----------------------------
+    # The installed examples belong to root.  The editor says so on its
+    # status line when it opens one, and says WHY when F1 fails.
+    ro = os.path.join(work, "ro")
+    os.makedirs(ro, exist_ok=True)
+    rofile = os.path.join(ro, "sample.bas")
+    with open(rofile, "w") as f:
+        f.write("Print 1\n")
+    os.chmod(ro, 0o555)
+    os.chmod(rofile, 0o444)
+    if os.access(rofile, os.W_OK):
+        print("skip  read-only checks (running as root)")
+    else:
+        p, fd = spawn([mmedit, rofile], env, ro)
+        out, drawn = read_until(fd, p, b"READ ONLY", 5)
+        check("a read-only file is announced on the status line", drawn)
+        os.write(fd, b"' more")
+        time.sleep(0.3)
+        os.write(fd, F1)
+        out, said = read_until(fd, p, b"CANNOT SAVE: Permission denied", 5)
+        check("F1 says why it cannot save", said)
+        os.write(fd, b"\x1b")          # ESC: abandon
+        time.sleep(0.3)
+        os.write(fd, b"\x1b")          # and again, if it asked
+        read_until(fd, p, None, 3)
+        try:
+            p.wait(timeout=3)
+        except subprocess.TimeoutExpired:
+            p.kill()
+        os.close(fd)
+    os.chmod(ro, 0o755)
+    os.chmod(rofile, 0o644)
+
     if fails:
         sys.stdout.write(out[-600:].decode("latin-1"))
     print("mmedit_pty: " + ("FAILED" if fails else "all passed"))

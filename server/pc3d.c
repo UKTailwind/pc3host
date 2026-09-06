@@ -70,9 +70,8 @@ static volatile sig_atomic_t stopping;
 #define VGA_FRAME_US 16800
 #define XGA_FRAME_US 14272
 
-static uint32_t *frame;			/* the window's pixels, sized at each change */
-static size_t frame_cap;
 static unsigned long frames;
+static int wake_r = -1, wake_w = -1;	/* the presenter's way of waking the loop */
 
 static long long now_us(void)
 {
@@ -94,6 +93,48 @@ static void on_signal(int sig)
 {
 	(void)sig;
 	stopping = 1;
+}
+
+/* The presenter found the window closed: the display has gone away. */
+void pc3d_window_closed(void)
+{
+	char x = 'x';
+
+	if (pc3d_verbose)
+		fprintf(stderr, "pc3d: window closed\n");
+	stopping = 1;
+	if (wake_w >= 0 && write(wake_w, &x, 1) < 0) { /* the loop will notice anyway */ }
+}
+
+/* Does a request change the picture?  The readers do not, and nor do
+ * the sound and network families; everything else is a reason to show
+ * a frame. */
+static int draws(uint16_t code)
+{
+	switch (code) {
+	case GFXIOC_GETPIXEL:
+	case GFXIOC_INFO:
+	case GFXIOC_FONTINFO:
+	case GFXIOC_FONTADDR:
+	case GFXIOC_BLITRD:
+	case GFXIOC_BLITRDR:
+	case GFXIOC_VSYNC:
+	case GFXIOC_VSYNCTRY:
+	case PICOIOC_KEYDOWN:
+	case PICOIOC_BOARD:
+	case PICOIOC_KBDMAP:
+	case PICOIOC_CONMIRROR:
+		return 0;
+	default:
+		break;
+	}
+	if (code >= NETIOC_UP && code <= NETIOC_TLSCA)
+		return 0;
+	if (code == SNDIOC_SOUND || code == SNDIOC_ENV || code == SNDIOC_QUIET ||
+	    (code >= SNDIOC_PCMOPEN && code <= SNDIOC_PCMOWNER) ||
+	    code == SNDIOC_PCMWAIT || code == SNDIOC_MMCMD || code == SNDIOC_MMSTOP)
+		return 0;
+	return 1;
 }
 
 /* --- the socket --------------------------------------------------------------- */
@@ -437,7 +478,12 @@ static int serve(struct client *c)
 		return send_reply(c, 0, 0, NULL, 0);
 	}
 
+	/* the display core is shared with the presenter's expansion */
+	pthread_mutex_lock(&pc3d_display_lock);
 	pc3d_dispatch(c, rq.code, rq.arg, c->buf, rq.len, &r);
+	pthread_mutex_unlock(&pc3d_display_lock);
+	if (!headless && draws(rq.code))
+		presenter_mark_dirty();
 	if (r.defer) {
 		/* VSYNCTRY: is the next frame inside the budget?  If not,
 		 * the answer is 0 now; if so, 1 when it comes. */
@@ -459,22 +505,7 @@ static int serve(struct client *c)
 
 /* --- the frame ---------------------------------------------------------------------- */
 
-static int last_w, last_h;
 static char snap_path[4096];
-
-/* Size the window buffer for the live mode. */
-static int frame_fit(int *w, int *h)
-{
-	present_size(w, h);
-	if ((size_t)*w * *h > frame_cap) {
-		uint32_t *nf = realloc(frame, (size_t)*w * *h * sizeof *frame);
-		if (!nf)
-			return -1;
-		frame = nf;
-		frame_cap = (size_t)*w * *h;
-	}
-	return 0;
-}
 
 /*
  * --snapshot FILE: the window's pixels as a binary PPM, written every
@@ -488,30 +519,44 @@ static void snapshot(void)
 	int w, h;
 	FILE *f;
 	int x, y;
+	uint32_t *frame;
 
-	if (!snap_path[0] || frame_fit(&w, &h) < 0)
+	if (!snap_path[0])
 		return;
-	present_frame(frame);
+	/* the expansion shares the display core and present.c's
+	 * scratch with the presenter, so it is taken under the lock */
+	pthread_mutex_lock(&pc3d_display_lock);
+	present_size(&w, &h);
+	frame = malloc((size_t)w * h * sizeof *frame);
+	if (frame)
+		present_frame(frame);
+	pthread_mutex_unlock(&pc3d_display_lock);
+	if (!frame)
+		return;
 	f = fopen(snap_path, "wb");
-	if (!f)
-		return;
-	fprintf(f, "P6\n%d %d\n255\n", w, h);
-	for (y = 0; y < h; y++)
-		for (x = 0; x < w; x++) {
-			uint32_t c = frame[(size_t)y * w + x];
-			unsigned char rgb[3] = { (unsigned char)(c >> 16),
-						 (unsigned char)(c >> 8),
-						 (unsigned char)c };
-			fwrite(rgb, 1, 3, f);
-		}
-	fclose(f);
-	if (pc3d_verbose)
-		fprintf(stderr, "pc3d: snapshot %dx%d -> %s\n", w, h, snap_path);
+	if (f) {
+		fprintf(f, "P6\n%d %d\n255\n", w, h);
+		for (y = 0; y < h; y++)
+			for (x = 0; x < w; x++) {
+				uint32_t c = frame[(size_t)y * w + x];
+				unsigned char rgb[3] = { (unsigned char)(c >> 16),
+							 (unsigned char)(c >> 8),
+							 (unsigned char)c };
+				fwrite(rgb, 1, 3, f);
+			}
+		fclose(f);
+		if (pc3d_verbose)
+			fprintf(stderr, "pc3d: snapshot %dx%d -> %s\n", w, h, snap_path);
+	}
+	free(frame);
 }
 
-static int tick(void)
+/* The frame tick: the PC3's vertical blanking, as a program sees it.
+ * The picture itself is the presenter's business - it is woken here
+ * and shows the frame if anything has been drawn. */
+static void tick(void)
 {
-	int i, w, h;
+	int i;
 
 	frames++;
 	keyboard_tick();		/* auto-repeat, at the decoder's timing */
@@ -526,26 +571,8 @@ static int tick(void)
 				client_close(c);
 		}
 	}
-	if (headless)
-		return 0;
-
-	if (frame_fit(&w, &h) < 0)
-		return -1;
-	if (w != last_w || h != last_h) {
-		if (win_open(w, h) < 0)
-			return -1;
-		win_title(present_mode_name());
-		last_w = w;
-		last_h = h;
-	}
-	present_frame(frame);
-	if (win_present(frame, w, h) < 0) {
-		if (pc3d_verbose)
-			fprintf(stderr, "pc3d: window closed\n");
-		return -1;
-	}
-	key_flush();			/* what the window's events produced */
-	return 0;
+	if (!headless)
+		presenter_wake();
 }
 
 /* --- main ----------------------------------------------------------------------------- */
@@ -553,7 +580,7 @@ static int tick(void)
 int main(int argc, char **argv)
 {
 	int i;
-	struct pollfd pfd[PC3D_MAX_CLIENTS + 1];
+	struct pollfd pfd[PC3D_MAX_CLIENTS + 2];
 	struct sigaction sa;
 
 	crash_handlers();
@@ -623,11 +650,25 @@ int main(int argc, char **argv)
 			keyboard_layout_name(), sndhw_backend());
 
 	next_tick = now_us() + frame_period();
-	if (!headless && tick() < 0)
-		goto out;
+	if (!headless) {
+		int pf[2];
+
+		/* the presenter's wake pipe: a key event on the window's
+		 * thread is a byte here, and the loop's poll returns */
+		if (pipe(pf) == 0) {
+			fcntl(pf[0], F_SETFL, fcntl(pf[0], F_GETFL) | O_NONBLOCK);
+			fcntl(pf[1], F_SETFL, fcntl(pf[1], F_GETFL) | O_NONBLOCK);
+			wake_r = pf[0];
+			wake_w = pf[1];
+		}
+		if (presenter_start(wake_w) < 0) {
+			fprintf(stderr, "pc3d: cannot start the presenter thread\n");
+			goto out;
+		}
+	}
 
 	while (!stopping) {
-		int n = 0, r, waiting = 0;
+		int n = 0, r, waiting = 0, wi = -1;
 		long long left;
 
 		pfd[n].fd = listen_fd;
@@ -645,6 +686,11 @@ int main(int argc, char **argv)
 					waiting = 1;
 				n++;
 			}
+		if (wake_r >= 0) {
+			pfd[n].fd = wake_r;
+			pfd[n].events = POLLIN;
+			wi = n++;
+		}
 		left = next_tick - now_us();
 		if (left < 0)
 			left = 0;
@@ -660,6 +706,11 @@ int main(int argc, char **argv)
 		}
 		if (r > 0) {
 			int k = 1;
+			if (wi >= 0 && (pfd[wi].revents & POLLIN)) {
+				char junk[64];
+				while (read(wake_r, junk, sizeof junk) > 0)
+					;
+			}
 			if (pfd[0].revents & POLLIN) {
 				int fd = accept(listen_fd, NULL, NULL);
 				if (fd >= 0) {
@@ -697,28 +748,32 @@ int main(int argc, char **argv)
 					client_close(c);
 			}
 		}
+		/* the window's keys, queued on the presenter's thread */
+		if (!headless) {
+			keyboard_pump();
+			key_flush();
+		}
 		if (now_us() >= next_tick) {
-			if (tick() < 0)
-				break;
+			tick();
 			next_tick += frame_period();
 			if (next_tick < now_us())	/* fell behind: resync */
 				next_tick = now_us() + frame_period();
-		} else if (!headless) {
-			if (win_pump() < 0)
-				break;
-			key_flush();
 		}
 	}
 out:
-	win_close();
+	presenter_stop();		/* it closes the window on its own thread */
 	for (i = 0; i < PC3D_MAX_CLIENTS; i++)
 		if (clients[i].fd >= 0)
 			client_close(&clients[i]);
 	sndhw_close();
 	close(listen_fd);
 	unlink(sock_path);
-	if (pc3d_verbose)
-		fprintf(stderr, "pc3d: %lu frames, %lu sound blocks, exiting\n",
-			frames, sndhw_blocks());
+	if (pc3d_verbose) {
+		unsigned long us = 0, pumps = 0, np = presenter_stats(&us, &pumps);
+
+		fprintf(stderr, "pc3d: %lu frames, %lu presented (%.1f ms each), "
+				"%lu sound blocks, exiting\n",
+			frames, np, np ? (double)us / np / 1000.0 : 0.0, sndhw_blocks());
+	}
 	return 0;
 }

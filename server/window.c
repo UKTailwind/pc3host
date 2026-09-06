@@ -64,13 +64,15 @@ int win_open(int w, int h)
 	return 0;
 }
 
+/* Both of these run on the presenter's thread (presenter.c); the key
+ * events they deliver through the callbacks above are queued in
+ * keyboard.c and taken by the request loop. */
 int win_present(const uint32_t *buf, int w, int h)
 {
 	if (!win)
 		return 0;
 	if (mfb_update_ex(win, (void *)buf, (unsigned)w, (unsigned)h) != MFB_STATE_OK)
 		return -1;
-	keyboard_pump();		/* the events that update delivered */
 	return 0;
 }
 
@@ -80,7 +82,6 @@ int win_pump(void)
 		return 0;
 	if (mfb_update_events(win) != MFB_STATE_OK)
 		return -1;
-	keyboard_pump();
 	return 0;
 }
 

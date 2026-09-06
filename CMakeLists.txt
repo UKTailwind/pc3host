@@ -277,7 +277,7 @@ find_package(Threads REQUIRED)
 add_executable(pc3d
     server/pc3d.c server/dispatch.c server/disphw.c server/present.c
     server/window.c server/fontdata.c server/keyboard.c server/crash.c
-    server/sndhw.c server/miniaudio.c server/netinfo.c
+    server/sndhw.c server/miniaudio.c server/netinfo.c server/presenter.c
     ${PLAT_DIR}/display.c ${PLAT_DIR}/fonts.c ${PLAT_DIR}/kbd_decode.c
     ${PLAT_DIR}/sound.c)
 target_compile_definitions(pc3d PRIVATE PC3_HOST PC3D_VERSION="${PC3_VERSION}")

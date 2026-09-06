@@ -12,6 +12,7 @@
 
 #include <stdint.h>
 #include <stddef.h>
+#include <pthread.h>
 
 /* The process table entry, as far as the display core needs one: who
  * owns a framebuffer or a font, and whose child a caller is.  The
@@ -76,7 +77,22 @@ void present_size(int *w, int *h);	/* window size for the live mode */
 void present_frame(uint32_t *out);	/* fill out[w*h] as 0x00RRGGBB */
 const char *present_mode_name(void);
 
-/* window.c: MiniFB */
+/* presenter.c: the window on its own thread, as the scanout is core1's.
+ * The request loop holds pc3d_display_lock around every dispatch; the
+ * presenter takes it while it turns the framebuffer into window pixels
+ * and pushes them without it.  A tick wakes it; a dirty mark says a
+ * frame is worth pushing; it writes a byte to the wake pipe when the
+ * window has produced key events. */
+extern pthread_mutex_t pc3d_display_lock;
+int  presenter_start(int wake_write_fd);
+void presenter_stop(void);
+void presenter_wake(void);
+void presenter_mark_dirty(void);
+unsigned long presenter_stats(unsigned long *us, unsigned long *idle_pumps);
+/* pc3d.c: the window went away - stop, and wake the loop to notice */
+void pc3d_window_closed(void);
+
+/* window.c: MiniFB - on the presenter's thread only */
 int  win_open(int w, int h);		/* (re)opens to this size; 0 ok */
 int  win_present(const uint32_t *buf, int w, int h);	/* -1 = closed */
 int  win_pump(void);			/* events only; -1 = closed */
@@ -84,9 +100,10 @@ void win_title(const char *t);
 void win_close(void);
 
 /* keyboard.c: the window's keys through kbd_decode.c */
-void keyboard_event(int mfb_key, int pressed);	/* from MiniFB's callback */
-void keyboard_char(unsigned codepoint);		/* from MiniFB's char callback */
-void keyboard_pump(void);			/* after the window's event pump */
+void keyboard_event(int mfb_key, int pressed);	/* from MiniFB's callback (presenter thread) */
+void keyboard_char(unsigned codepoint);		/* from MiniFB's char callback (presenter thread) */
+int  keyboard_pending(void);			/* events queued and not yet pumped */
+void keyboard_pump(void);			/* the request loop takes the queue */
 void keyboard_tick(void);			/* every frame: auto-repeat */
 void keyboard_reset(void);			/* the window closed */
 void keyboard_inject(int mfb_key, int pressed);	/* PC3_INJECT */

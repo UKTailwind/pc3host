@@ -54,6 +54,16 @@ pc3                                   # a shell with the PC3 tools first
 cc -r /opt/pc3/share/examples/gfx1.bas
 ```
 
+## Editing the examples
+
+The examples and the MMBasic directory install under `/opt/pc3/share`
+and belong to root, so `mmedit` can read them there but not save them
+- it says so on its status line when it opens one. Copy them somewhere
+of your own first:
+
+    cp -r /opt/pc3/share/examples ~/pc3
+    cd ~/pc3/samples && mmedit breakout.bas
+
 ## Where things stand
 
 Phase 0 built the tree and the gates and cut the first kernel seam.

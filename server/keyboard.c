@@ -31,6 +31,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <time.h>
+#include <pthread.h>
 #include <MiniFB_enums.h>
 
 #include "kbd_decode.h"
@@ -237,14 +238,30 @@ static void transition(uint8_t usage, int down)
 
 /* MiniFB delivers events during its pump; they are queued and processed
  * after it, so that X11's auto-repeat - a release and a press of the
- * same key in the same batch - can be seen for what it is. */
+ * same key in the same batch - can be seen for what it is.  The pump
+ * runs on the presenter's thread (presenter.c) and the processing on
+ * the request loop's, where the decoder lives, so the queue is the one
+ * thing here that two threads touch, and it is locked. */
+#define EV_CHAR (-2)			/* a character, not a key: see keyboard_char */
 struct ev {
 	int key;
-	int pressed;
+	int pressed;			/* or the code point, for EV_CHAR */
 };
 static struct ev queue[128];
 static int nq;
-static int unknown_pending;	/* a press MiniFB could not name */
+static pthread_mutex_t qlock = PTHREAD_MUTEX_INITIALIZER;
+static int unknown_pending;	/* a press MiniFB could not name (window thread only) */
+
+static void enqueue(int key, int pressed)
+{
+	pthread_mutex_lock(&qlock);
+	if (nq < (int)(sizeof queue / sizeof queue[0])) {
+		queue[nq].key = key;
+		queue[nq].pressed = pressed;
+		nq++;
+	}
+	pthread_mutex_unlock(&qlock);
+}
 
 void keyboard_event(int key, int pressed)
 {
@@ -252,11 +269,7 @@ void keyboard_event(int key, int pressed)
 		unknown_pending = pressed;
 		return;
 	}
-	if (nq < (int)(sizeof queue / sizeof queue[0])) {
-		queue[nq].key = key;
-		queue[nq].pressed = pressed;
-		nq++;
-	}
+	enqueue(key, pressed);
 }
 
 /* The character MiniFB made of the last key.  Only used for a key it
@@ -267,23 +280,44 @@ void keyboard_char(unsigned cp)
 	if (!unknown_pending)
 		return;
 	unknown_pending = 0;
-	if (cp >= 0x20 && cp < 0x7F) {
-		if (keylog)
-			fprintf(stderr, "kbd: unnamed key, char '%c'\n", (int)cp);
-		kbd_push((uint8_t)cp);
-	}
+	if (cp >= 0x20 && cp < 0x7F)
+		enqueue(EV_CHAR, (int)cp);
+}
+
+int keyboard_pending(void)
+{
+	int n;
+
+	pthread_mutex_lock(&qlock);
+	n = nq;
+	pthread_mutex_unlock(&qlock);
+	return n > 0;
 }
 
 void keyboard_pump(void)
 {
-	int i;
+	struct ev batch[128];
+	int i, n;
 
-	for (i = 0; i < nq; i++) {
-		int key = queue[i].key, pressed = queue[i].pressed;
+	pthread_mutex_lock(&qlock);
+	n = nq;
+	if (n)
+		memcpy(batch, queue, (size_t)n * sizeof batch[0]);
+	nq = 0;
+	pthread_mutex_unlock(&qlock);
+
+	for (i = 0; i < n; i++) {
+		int key = batch[i].key, pressed = batch[i].pressed;
 		uint8_t u;
 
-		if (!pressed && i + 1 < nq && queue[i + 1].pressed &&
-		    queue[i + 1].key == key) {
+		if (key == EV_CHAR) {
+			if (keylog)
+				fprintf(stderr, "kbd: unnamed key, char '%c'\n", pressed);
+			kbd_push((uint8_t)pressed);
+			continue;
+		}
+		if (!pressed && i + 1 < n && batch[i + 1].pressed &&
+		    batch[i + 1].key == key) {
 			i++;			/* X11 auto-repeat: release+press, dropped */
 			continue;
 		}
@@ -293,7 +327,6 @@ void keyboard_pump(void)
 				pressed ? "down" : "up", u);
 		transition(u, pressed);
 	}
-	nq = 0;
 }
 
 void keyboard_tick(void)

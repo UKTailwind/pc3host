@@ -155,6 +155,42 @@ BASIC program drew into it.
 * **`GFXIOC_FONTADDR`** hands back a copy of the font mapped below 4G
   so the 32-bit address fits; Linux only (`MAP_32BIT`), like the arena.
 
+## The presenter thread (added 2026-09-06)
+
+The first user found `breakout.bas` crawling on a desktop where it ran
+at 110 frames a second here, and the difference was the window. The
+server presented from its request loop: expand the framebuffer, push it
+to X, then answer requests again, and while the push was in flight
+nobody was answered. Under WSLg a push takes two milliseconds and it
+did not show. On a desktop whose compositor holds a client until it has
+taken the previous frame, a push can be most of a frame, and a program
+making 1,200 round trips a frame - `TILEMAP DRAW` is one per tile - was
+served in the gaps between pushes. The board never has this problem:
+core1 scans out whatever core0 does, and no ioctl waits for a frame.
+
+`server/presenter.c` is that core1. The window, MiniFB and the X11
+connection live on its thread. The request loop holds a display lock
+around every dispatch; the presenter takes the same lock only while it
+turns the framebuffer into window pixels, a millisecond or two, and
+pushes without it. A tick wakes the presenter, and it presents when
+something has been drawn since the last frame - a static screen costs
+nothing; the keys fixture ran 274 frames and presented twice. If a push
+outlasts a frame the frames coalesce, as they do on a board whose
+program draws faster than the monitor shows. The window's key events
+are queued in `keyboard.c` under a lock and taken by the request loop,
+which the presenter wakes through a pipe so a key is never a frame
+late; a window closed from the desktop stops the server the same way.
+`--verbose` now reports how many frames were presented and what each
+cost. Typing into the real window with XTEST gives the e2e keys
+fixture's exact expected output through the new path.
+
+The remaining lever for a game like this is the crossing count itself:
+1,200 tile blits a frame are 1,200 round trips on a PC where they were
+1,200 microsecond ioctls on the board. A tile row composed program-side
+and sent as one rows transfer would be thirty crossings a frame, and
+faster on the board too; it is a change to the tilemap header, and
+waits for a board to verify it on.
+
 ## Building
 
 ```
