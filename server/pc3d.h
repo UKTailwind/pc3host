@@ -112,6 +112,10 @@ void sndhw_client_gone(uint16_t tok);
 int  pc3d_tok_alive(uint16_t tok);
 int  pc3d_tok_pid(uint16_t tok);
 
+/* netinfo.c: NETIOC_STATUS from the machine's own network */
+struct net_status;
+void netinfo_status(struct net_status *st);
+
 extern int pc3d_verbose;
 
 #endif /* PC3D_H */

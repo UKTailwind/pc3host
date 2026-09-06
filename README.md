@@ -69,7 +69,11 @@ a program: the image loaders and `saveimage` (now reading rows, not
 pixels), sprites down their pipe, `SYSTEM`, gated by the image round
 trips. Phase 5 is the editor and the driver: `mmedit prog.bas` then F2
 builds and runs, as the manual says, through a compiler you can name.
-See [PHASE0.md](PHASE0.md), [PHASE1.md](PHASE1.md),
-[PHASE2.md](PHASE2.md), [PHASE3.md](PHASE3.md), [PHASE4.md](PHASE4.md)
-and [PHASE5.md](PHASE5.md). Windows and networking are phases 6 and 7
-in the review; a PicoMite on a USB serial link for real I/O is phase 8.
+Phase 7 is networking: the `WEB` family over the PC's sockets, TLS
+through mbedtls in `bcrun` itself, names resolved, `WEB CONNECT`
+answered from the machine's own network. See [PHASE0.md](PHASE0.md),
+[PHASE1.md](PHASE1.md), [PHASE2.md](PHASE2.md), [PHASE3.md](PHASE3.md),
+[PHASE4.md](PHASE4.md), [PHASE5.md](PHASE5.md) and
+[PHASE7.md](PHASE7.md). Windows is phase 6 in the review, deferred
+until everything works under Linux; a PicoMite on a USB serial link for
+real I/O is phase 8.

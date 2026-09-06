@@ -105,6 +105,20 @@ add_custom_command(TARGET ccbc POST_BUILD
 # define the FUZIX sources know for "on a PC, talk to the server".
 add_library(pc3client STATIC client/pc3client.c)
 target_include_directories(pc3client PUBLIC client proto ${PLAT_DIR})
+
+# TLS for the hosted bcrun: the board's IPPROTO_TLS socket is a kernel
+# socket over mbedtls; on a PC it is client/pc3tls.c over the same
+# library (ext/mbedtls, pinned at the kernel's version), built as one
+# static archive from its sources so bcrun stays a static program.
+file(GLOB MBEDTLS_SRC ${CMAKE_SOURCE_DIR}/ext/mbedtls/library/*.c)
+add_library(mbedtls_all STATIC ${MBEDTLS_SRC})
+target_include_directories(mbedtls_all PUBLIC ext/mbedtls/include
+                                       PRIVATE ext/mbedtls/library)
+target_compile_options(mbedtls_all PRIVATE -w -O2)
+add_library(pc3tls STATIC client/pc3tls.c)
+target_include_directories(pc3tls PUBLIC client)
+target_compile_options(pc3tls PRIVATE -O2 -g -Wall -Wextra)
+target_link_libraries(pc3tls PUBLIC mbedtls_all)
 target_compile_definitions(ccbc PRIVATE PC3_HOST)
 target_link_libraries(ccbc PRIVATE pc3client)
 
@@ -119,7 +133,7 @@ target_link_libraries(ccbc PRIVATE pc3client)
 kit_tool(bcrun ${CC_DIR}/bcrun.c ${LIBS_DIR}/fnum.c)
 target_include_directories(bcrun PRIVATE ${MMB_DIR})
 target_compile_definitions(bcrun PRIVATE PC3_HOST MM_PC3 MM_HOSTED_ONLY)
-target_link_libraries(bcrun PRIVATE pc3client m)
+target_link_libraries(bcrun PRIVATE pc3client pc3tls m)
 
 # The gates' bcrun: the display-less shape Makefile.host builds, which
 # is what every tests/*.expected was blessed against.  The board-shaped
@@ -263,7 +277,7 @@ find_package(Threads REQUIRED)
 add_executable(pc3d
     server/pc3d.c server/dispatch.c server/disphw.c server/present.c
     server/window.c server/fontdata.c server/keyboard.c server/crash.c
-    server/sndhw.c server/miniaudio.c
+    server/sndhw.c server/miniaudio.c server/netinfo.c
     ${PLAT_DIR}/display.c ${PLAT_DIR}/fonts.c ${PLAT_DIR}/kbd_decode.c
     ${PLAT_DIR}/sound.c)
 target_compile_definitions(pc3d PRIVATE PC3_HOST PC3D_VERSION="${PC3_VERSION}")
@@ -283,6 +297,12 @@ target_compile_definitions(sound_seam PRIVATE PC3_HOST)
 target_include_directories(sound_seam PRIVATE ${PLAT_DIR})
 target_compile_options(sound_seam PRIVATE -g -Wall -Wextra -Wno-unused-parameter)
 
+# ntpdate is what WEB NTP runs: on a PC it asks the server and leaves
+# the clock to the operating system (tools/ntpdate.c).  bcrun's own
+# directory is first on a program's PATH, so this is the one found.
+add_executable(ntpdate tools/ntpdate.c)
+target_compile_options(ntpdate PRIVATE -O2 -Wall)
+
 # pc3key presses keys in the server from a script (tests/e2e/run.sh).
 add_executable(pc3key tools/pc3key.c)
 target_include_directories(pc3key PRIVATE ext/minifb/include)
@@ -292,7 +312,7 @@ target_link_libraries(pc3key PRIVATE pc3client)
 if(PC3_STATIC)
     foreach(t cc0 cc1 cc2 bcdump dumptokens ccbc bcrun bcrun-gate cpp mmbc mmedit
               loadjpg loadpng loadimage saveimage playmp3 playwav playflac playmod
-              playsnd pcmpace sndharness pc3key display_seam sound_seam)
+              playsnd pcmpace sndharness pc3key ntpdate display_seam sound_seam)
         target_link_options(${t} PRIVATE -static)
     endforeach()
     # pc3d stays dynamic (see the note at the option), C++ runtime
@@ -307,15 +327,22 @@ endif()
 #   bin/         the programs, and cc, and the pc3 launcher
 #   lib/cc/      cc0 cc1 cc2 and include/, as /usr/lib/cc on the board
 #   share/       documentation, the man pages as text, and the examples
-install(TARGETS pc3d bcrun mmbc mmedit cpp bcdump ccbc pc3key
+install(TARGETS pc3d bcrun mmbc mmedit cpp bcdump ccbc pc3key ntpdate
                 loadjpg loadpng loadimage saveimage
                 playmp3 playwav playflac playmod playsnd
         RUNTIME DESTINATION bin)
 install(TARGETS cc0 cc1 cc2 RUNTIME DESTINATION lib/cc)
 install(PROGRAMS packaging/pc3 DESTINATION bin)
 install(FILES ${PC3_CC_HEADERS} DESTINATION lib/cc/include)
+# The board's CA bundle (ten roots, 12K - the WEB TLS CA path holds 20K
+# at most).  A program's WEB TLS CA "/etc/ca.pem" finds this one when a
+# PC has no /etc/ca.pem (bcrun's lc_open), so a program written for the
+# board trusts what it trusted there.  In the build tree too, at the
+# same place relative to bin/, so the gates see what the package sees.
+file(COPY ${PLAT_DIR}/ca.pem DESTINATION ${CMAKE_BINARY_DIR}/share/pc3host)
+install(FILES ${PLAT_DIR}/ca.pem DESTINATION share/pc3host)
 install(FILES README.md REVIEW.md PHASE0.md PHASE1.md PHASE2.md PHASE3.md
-              PHASE4.md PHASE5.md
+              PHASE4.md PHASE5.md PHASE7.md
               ${PLAT_DIR}/PC3-C-MANUAL.md ${MMB_DIR}/README.md
         DESTINATION share/doc/pc3host)
 file(GLOB PC3_MAN ${FUZIX_ROOT}/Applications/man1/bcrun.1
@@ -400,6 +427,17 @@ add_test(NAME editor-pty
     COMMAND python3 ${CMAKE_SOURCE_DIR}/tests/editor/mmedit_pty.py
             ${BIN}/mmedit ${BIN}/cc ${GATE}/editor)
 set_tests_properties(editor-pty PROPERTIES TIMEOUT 180 RESOURCE_LOCK symtmp LABELS e2e)
+
+# Phase 7: the WEB family on the loopback - a TCP client against a
+# local HTTP server, the BASIC web server against curl, the UDP pair,
+# WEB CONNECT and MM.INFO(IP ADDRESS) from the server's NETIOC_STATUS,
+# and TLS against a local server with a self-signed certificate: the
+# handshake succeeds with the certificate given to WEB TLS CA and is
+# refused without it (tests/net/run.sh).  Nothing here needs the
+# internet.
+add_test(NAME net
+    COMMAND bash ${CMAKE_SOURCE_DIR}/tests/net/run.sh ${BIN} ${FUZIX_ROOT} ${GATE}/net)
+set_tests_properties(net PROPERTIES TIMEOUT 600 RESOURCE_LOCK symtmp LABELS e2e)
 add_test(NAME cgate
     COMMAND ${CMAKE_COMMAND} -E env MMBC=${BIN}/mmbc W=${GATE}/cgate
             bash ${MMB_DIR}/mmbc/cgate.sh

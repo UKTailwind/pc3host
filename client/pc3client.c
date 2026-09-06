@@ -745,6 +745,27 @@ int pc3_sys_ioctl(int fd, unsigned long code, void *arg)
 	case SNDIOC_MMSTOP:
 		return simple(fd, (uint16_t)code, 0);
 
+	/* ---- the network: the status structure back, the join in, the
+	 * CA bundle's bytes as the payload (a pointer in struct net_ca) */
+	case NETIOC_STATUS:
+		if (!arg) { errno = EFAULT; return -1; }
+		return roundtrip(fd, (uint16_t)code, NULL, 0, arg, sizeof(struct net_status));
+	case NETIOC_UP:
+		if (!arg) { errno = EFAULT; return -1; }
+		return roundtrip(fd, (uint16_t)code, arg, sizeof(struct net_join), NULL, 0);
+	case NETIOC_DOWN:
+		return simple(fd, (uint16_t)code, 0);
+	case NETIOC_TLSCA: {
+		const struct net_ca *ca = arg;
+		size_t n;
+
+		if (!ca || (!ca->buf && ca->len)) { errno = EFAULT; return -1; }
+		n = ca->len > PC3_MAX_PAYLOAD ? PC3_MAX_PAYLOAD : ca->len;
+		if (exchange(fd, (uint16_t)code, 0, ca->buf, n, NULL, 0, NULL, 0, &ret) < 0)
+			return -1;
+		return ret;
+	}
+
 	case PICOIOC_LIBM:
 	default:
 		break;

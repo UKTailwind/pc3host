@@ -1,17 +1,19 @@
 # Programs in the FUZIX test corpus that are NOT identical to their
 # .expected files when run with a display (tests/sweep/run-corpus.sh).
-# Four are the files' own limitation: the .expected was blessed on a
-# host with no display and no sound, and with a server the program
-# reads something real - mminfo's lock state, printat's cursor escapes,
-# and the one legitimate PLAY SOUND in play and strargs, which the
-# goldens expect to fail with "Sound output did not start" and which
-# now plays.  Ten are the pin and peripheral tests, which a PC refuses
-# until phase 8.  A name leaving this list is progress; a name arriving
-# is a fault.
+# Five are the files' own limitation: the .expected was blessed on a
+# host with no display, no sound and no /dev/sys, and with a server
+# the program reads something real - mminfo's lock state, printat's
+# cursor escapes, the one legitimate PLAY SOUND in play and strargs
+# (the goldens expect "Sound output did not start" and it plays), and
+# webservz's MM.INFO(IP ADDRESS) (the golden says 0.0.0.0 and the
+# server answers with the machine's address).  Ten are the pin and
+# peripheral tests, which a PC refuses until phase 8.  A name leaving
+# this list is progress; a name arriving is a fault.
 mminfo
 printat
 play
 strargs
+webservz
 countpin
 gpio
 i2c2

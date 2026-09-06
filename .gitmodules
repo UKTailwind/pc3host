@@ -8,3 +8,6 @@
 [submodule "ext/miniaudio"]
 	path = ext/miniaudio
 	url = https://github.com/mackron/miniaudio
+[submodule "ext/mbedtls"]
+	path = ext/mbedtls
+	url = https://github.com/Mbed-TLS/mbedtls

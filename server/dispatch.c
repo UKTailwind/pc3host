@@ -599,6 +599,27 @@ void pc3d_dispatch(struct client *c, uint16_t code, uint32_t arg,
 		ok(r, 0);
 		return;
 
+	/* ---- the network: a PC's is the operating system's and already
+	 * up, so a join is a yes and STATUS is what the machine has
+	 * (netinfo.c).  The CA bundle never reaches here from bcrun -
+	 * its TLS layer takes NETIOC_TLSCA itself, being in the same
+	 * process as the socket - and a native program's is accepted
+	 * with nowhere to go. ---- */
+	case NETIOC_UP:
+	case NETIOC_DOWN:
+	case NETIOC_TLSCA:
+		ok(r, 0);
+		return;
+	case NETIOC_STATUS: {
+		struct net_status st;
+
+		netinfo_status(&st);
+		put(r, &st, sizeof st);
+		if (r->err) return;
+		ok(r, 0);
+		return;
+	}
+
 	default:
 		break;
 	}
