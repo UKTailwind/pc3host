@@ -64,6 +64,26 @@ static void note(const char *what, int rc)
 	fprintf(stderr, "pc3tls: %s: -0x%04x %s\n", what, (unsigned)-rc, e);
 }
 
+#ifdef _WIN32
+#include <wincrypt.h>
+/* The machine's roots on Windows are in the certificate store, not in
+ * a file: the ROOT store, every certificate parsed as DER. */
+static int windows_roots(mbedtls_x509_crt *chain)
+{
+	HCERTSTORE st = CertOpenSystemStoreA(0, "ROOT");
+	PCCERT_CONTEXT c = NULL;
+	int n = 0;
+
+	if (!st)
+		return 0;
+	while ((c = CertEnumCertificatesInStore(st, c)) != NULL)
+		if (mbedtls_x509_crt_parse_der(chain, c->pbCertEncoded, c->cbCertEncoded) == 0)
+			n++;
+	CertCloseStore(st, 0);
+	return n > 0;
+}
+#endif
+
 static int init(void)
 {
 	int rc;
@@ -93,8 +113,12 @@ static int init(void)
 	mbedtls_ssl_conf_rng(&conf, mbedtls_ctr_drbg_random, &drbg);
 	/* the machine's own roots, if it has them: authenticated by
 	 * default, where the board is encrypted-only until WEB TLS CA */
+#ifdef _WIN32
+	ca_loaded = windows_roots(&cacert);
+#else
 	if (mbedtls_x509_crt_parse_file(&cacert, SYSTEM_CA) == 0 && cacert.version)
 		ca_loaded = 1;
+#endif
 	mbedtls_ssl_conf_ca_chain(&conf, &cacert, NULL);
 	mbedtls_ssl_conf_authmode(&conf, ca_loaded ? MBEDTLS_SSL_VERIFY_REQUIRED
 						   : MBEDTLS_SSL_VERIFY_OPTIONAL);
@@ -232,7 +256,11 @@ static int start_ssl(struct tlsfd *t)
 		note("ssl_set_hostname", rc);
 		return -1;
 	}
+#ifdef _WIN32
+	t->net.fd = (int)pc3w_sock(t->fd);	/* the SOCKET, for the BIO */
+#else
 	t->net.fd = t->fd;
+#endif
 	mbedtls_ssl_set_bio(&t->ssl, &t->net, mbedtls_net_send, mbedtls_net_recv, NULL);
 	t->state = TLS_HANDSHAKE;
 	return 0;
@@ -346,5 +374,9 @@ int pc3_tls_close(int fd)
 	}
 	t->fd = -1;
 	t->have_ssl = 0;
+#ifdef _WIN32
+	return pc3w_sock_close(fd);
+#else
 	return close(fd);
+#endif
 }

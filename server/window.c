@@ -50,7 +50,9 @@ int win_open(int w, int h)
 		 * modifier set to none that is a local no-op rather than a
 		 * connection to whatever the desktop runs, which a statically
 		 * linked binary is better off not making. */
+#ifndef _WIN32
 		setenv("XMODIFIERS", "@im=none", 1);
+#endif
 		win = mfb_open_ex("Pico Computer 3", (unsigned)w, (unsigned)h, 0);
 		if (!win) {
 			fprintf(stderr, "pc3d: cannot open a %dx%d window\n", w, h);

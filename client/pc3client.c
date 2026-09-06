@@ -43,6 +43,24 @@
 #include "pc3proto.h"
 #include "pc3client.h"
 
+/* The socket, read and written as one on both worlds: recv and send
+ * are read and write on a stream socket, and on Windows the descriptor
+ * is the shim's (pc3w.h), which read() and close() do not know. */
+#ifdef _WIN32
+#define sock_read(fd, b, n)  pc3w_recv((fd), (b), (n), 0)
+#define sock_write(fd, b, n) pc3w_send((fd), (b), (n), 0)
+#define sock_close(fd)       pc3w_sock_close(fd)
+#else
+#define sock_read(fd, b, n)  read((fd), (b), (n))
+#define sock_write(fd, b, n) write((fd), (b), (n))
+#define sock_close(fd)       close(fd)
+#endif
+#ifdef _WIN32
+#define PATH_SEP ';'
+#else
+#define PATH_SEP ':'
+#endif
+
 /* --- the descriptors that are ours ----------------------------------------- */
 
 #define MAXFD 16
@@ -87,11 +105,17 @@ static void socket_path(char *buf, size_t n)
 		snprintf(buf, n, "%s", e);
 		return;
 	}
+#ifdef _WIN32
+	/* the temporary directory: AF_UNIX on Windows wants a path too */
+	(void)x;
+	snprintf(buf, n, "%s/%s", pc3w_tmpdir(), PC3_SOCKET_NAME);
+#else
 	x = getenv("XDG_RUNTIME_DIR");
 	if (x && *x)
 		snprintf(buf, n, "%s/%s", x, PC3_SOCKET_NAME);
 	else
 		snprintf(buf, n, "/tmp/pc3d-%u.sock", (unsigned)getuid());
+#endif
 }
 
 static int try_connect(const char *path)
@@ -107,7 +131,7 @@ static int try_connect(const char *path)
 	snprintf(sa.sun_path, sizeof sa.sun_path, "%s", path);
 	if (connect(fd, (struct sockaddr *)&sa, sizeof sa) < 0) {
 		int e = errno;
-		close(fd);
+		sock_close(fd);
 		errno = e;
 		return -1;
 	}
@@ -123,10 +147,19 @@ static void start_server(void)
 {
 	char exe[4096], cand[4096 + 8];
 	const char *bin = getenv(PC3_SERVER_ENV);
+#ifndef _WIN32
 	ssize_t n;
 	pid_t pid;
+#endif
 
 	if (!bin || !*bin) {
+#ifdef _WIN32
+		if (pc3w_exe_dir(exe, sizeof exe) == 0) {
+			snprintf(cand, sizeof cand, "%s/pc3d.exe", exe);
+			if (access(cand, 0) == 0)
+				bin = cand;
+		}
+#else
 		n = readlink("/proc/self/exe", exe, sizeof exe - 1);
 		if (n > 0) {
 			char *slash;
@@ -139,10 +172,25 @@ static void start_server(void)
 					bin = cand;
 			}
 		}
+#endif
 	}
 	if (!bin || !*bin)
 		bin = "pc3d";
 
+#ifdef _WIN32
+	{
+		/* detached - no console, nobody waiting - with its messages
+		 * in a log in the temporary directory, beside its socket */
+		char log[4200];
+		char *av[2];
+
+		snprintf(log, sizeof log, "%s/pc3d.log", pc3w_tmpdir());
+		av[0] = (char *)bin;
+		av[1] = NULL;
+		pc3w_spawn(bin, av, -1, -1, 1, log);
+		return;
+	}
+#else
 	pid = fork();
 	if (pid < 0)
 		return;
@@ -179,6 +227,7 @@ static void start_server(void)
 		_exit(127);
 	}
 	waitpid(pid, NULL, 0);		/* the middle process, at once */
+#endif
 }
 
 static long exchange(int fd, uint16_t code, uint32_t arg,
@@ -270,7 +319,7 @@ int pc3_sys_open(void)
 	iov[1].iov_base = &h;
 	iov[1].iov_len = sizeof h;
 	if (writev(fd, iov, 2) != (ssize_t)(sizeof rq + sizeof h)) {
-		close(fd);
+		sock_close(fd);
 		errno = ENOENT;
 		return -1;
 	}
@@ -287,7 +336,7 @@ int pc3_sys_close(int fd)
 	if (!pc3_sys_isfd(fd))
 		return close(fd);
 	forget(fd);
-	return close(fd);
+	return sock_close(fd);
 }
 
 /* --- the exchange ------------------------------------------------------------ */
@@ -322,7 +371,7 @@ static int read_full(int fd, void *buf, size_t n)
 	unsigned char *p = buf;
 
 	while (n) {
-		ssize_t r = read(fd, p, n);
+		ssize_t r = sock_read(fd, p, n);
 		if (r < 0) {
 			if (errno == EINTR)
 				continue;
@@ -383,7 +432,7 @@ static long exchange(int fd, uint16_t code, uint32_t arg,
 				if (done >= l) { done -= l; continue; }
 				b += done; l -= done; done = 0;
 				while (l) {
-					ssize_t k = write(fd, b, l);
+					ssize_t k = sock_write(fd, b, l);
 					if (k < 0) {
 						if (errno == EINTR) continue;
 						return -1;
@@ -904,13 +953,13 @@ static int key_open(void)
 	iov[1].iov_base = &h;
 	iov[1].iov_len = sizeof h;
 	if (writev(fd, iov, 2) != (ssize_t)(sizeof rq + sizeof h)) {
-		close(fd);
+		sock_close(fd);
 		return -1;
 	}
 	rq.len = 0;
 	rq.code = PC3_KEYCHAN;
-	if (write(fd, &rq, sizeof rq) != (ssize_t)sizeof rq) {
-		close(fd);
+	if (sock_write(fd, &rq, sizeof rq) != (ssize_t)sizeof rq) {
+		sock_close(fd);
 		return -1;
 	}
 	signal(SIGPIPE, SIG_IGN);
@@ -957,7 +1006,7 @@ int pc3_rd1(void)
 	/* the window first: its bytes are already decoded and never part
 	 * of a sequence the terminal is in the middle of */
 	if (ki >= 0 && (p[ki].revents & (POLLIN | POLLHUP | POLLERR))) {
-		ssize_t k = read(keyfd, &c, 1);
+		ssize_t k = sock_read(keyfd, &c, 1);
 		if (k == 1) {
 			if (c == 3) {
 				raise(SIGINT);	/* the tty's ISIG, for the window */
@@ -965,14 +1014,18 @@ int pc3_rd1(void)
 			}
 			return (int)c;
 		}
-		close(keyfd);		/* the server went away */
+		sock_close(keyfd);	/* the server went away */
 		keyfd = -1;
 		key_retry = 0;
 		server_gone();		/* and with it the program's display */
 		return -1;
 	}
 	if (ti >= 0 && (p[ti].revents & (POLLIN | POLLHUP | POLLERR))) {
+#ifdef _WIN32
+		ssize_t k = pc3w_read(0, &c, 1);	/* the console, as set */
+#else
 		ssize_t k = read(0, &c, 1);
+#endif
 		if (k == 1)
 			return (int)c;
 		if (k == 0 && !isatty(0))
@@ -1002,6 +1055,9 @@ int pc3_inject_key(int fd, int mfb_key, int pressed)
 
 int pc3_exe_dir(char *buf, size_t n)
 {
+#ifdef _WIN32
+	return pc3w_exe_dir(buf, n);
+#else
 	ssize_t k = readlink("/proc/self/exe", buf, n - 1);
 	char *slash;
 
@@ -1013,6 +1069,7 @@ int pc3_exe_dir(char *buf, size_t n)
 		return -1;
 	*slash = 0;
 	return 0;
+#endif
 }
 
 void pc3_path_prepend(void)
@@ -1025,13 +1082,13 @@ void pc3_path_prepend(void)
 	if (pc3_exe_dir(dir, sizeof dir) < 0)
 		return;
 	if (old && strncmp(old, dir, strlen(dir)) == 0 &&
-	    (old[strlen(dir)] == ':' || old[strlen(dir)] == 0))
+	    (old[strlen(dir)] == PATH_SEP || old[strlen(dir)] == 0))
 		return;			/* already first */
 	n = strlen(dir) + 1 + (old ? strlen(old) : 0) + 1;
 	np = malloc(n);
 	if (!np)
 		return;
-	snprintf(np, n, "%s%s%s", dir, old ? ":" : "", old ? old : "");
+	snprintf(np, n, "%s%c%s", dir, old ? PATH_SEP : 0, old ? old : "");
 	setenv("PATH", np, 1);
 	free(np);
 }

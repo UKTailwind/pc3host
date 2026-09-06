@@ -38,6 +38,53 @@ set(LIBS_DIR ${FUZIX_ROOT}/Library/libs)
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 set(BIN ${CMAKE_BINARY_DIR}/bin)
 
+# ---- Windows ------------------------------------------------------------------
+# A MinGW cross-build (cmake/toolchain-mingw64.cmake).  hostshim/win32 is
+# the POSIX surface the sources use, over Winsock and Win32: every
+# program links it, and its include directory comes first so the stand-in
+# headers (termios.h, poll.h, sys/socket.h ...) are the ones found.
+# Everything links static, so the .exe files need nothing beside them.
+# A build tree cannot symlink on Windows, so the layouts are copies there.
+if(WIN32)
+    # An OBJECT library, not an archive: its start-up code (binary
+    # standard streams, ANSI output) must reach every program, including
+    # the passes, which call nothing else in it.
+    add_library(pc3win OBJECT hostshim/win32/winshim.c)
+    target_include_directories(pc3win PUBLIC hostshim/win32/include)
+    target_compile_options(pc3win PRIVATE -O2 -g -Wall -Wextra)
+    target_link_libraries(pc3win PUBLIC ws2_32 bcrypt iphlpapi crypt32 pthread)
+    add_link_options(-static -static-libgcc -static-libstdc++)
+    # MinGW own printf family: C99 exponents (1e+05, not 1e+005), %lld, %zu
+    add_compile_definitions(__USE_MINGW_ANSI_STDIO=1)
+    set(PC3_SHIM pc3win)
+    set(PC3_X11 "")
+    set(PC3_LINK_OR_COPY copy_if_different)
+else()
+    set(PC3_SHIM "")
+    set(PC3_X11 X11)
+    set(PC3_LINK_OR_COPY create_symlink)
+endif()
+
+# The transcendental functions, on Windows, from the FUZIX C library
+# (the musl implementations), compiled in ahead of the C runtime: MinGW
+# computes cos through the x87 instructions, whose answer for a right
+# angle differs from glibc and from the board in the last digits, and a
+# program printing them shows it (tests/mathm.bas).  The same objects go
+# into everything that folds or prints a float.
+if(WIN32)
+    set(PC3_LIBM_SRC sin.c cos.c tan.c __sin.c __cos.c __tan.c
+        __rem_pio2.c __rem_pio2_large.c asin.c acos.c atan.c atan2.c
+        sinh.c cosh.c tanh.c __expo2.c exp.c expm1.c log.c log10.c
+        pow.c fmod.c scalbn.c __log1p.c)
+    list(TRANSFORM PC3_LIBM_SRC PREPEND ${LIBS_DIR}/)
+    add_library(pc3libm OBJECT ${PC3_LIBM_SRC})
+    target_include_directories(pc3libm PRIVATE ${LIBS_DIR})
+    target_compile_options(pc3libm PRIVATE -w -O2 -fno-builtin)
+    set(PC3_LIBM pc3libm)
+else()
+    set(PC3_LIBM "")
+endif()
+
 # The headers cc's include directory carries - what the board's
 # mkccimage.sh stages into /usr/lib/cc/include, by the same rule: the
 # bcrun-world C headers, every mmb_*.h, the pin registers, the four
@@ -64,6 +111,7 @@ function(kit_tool name)
     add_executable(${name} ${ARGN})
     target_compile_options(${name} PRIVATE ${KIT_FLAGS})
     target_compile_definitions(${name} PRIVATE ${KIT_DEFS})
+    target_link_libraries(${name} PRIVATE ${PC3_SHIM})
 endfunction()
 
 kit_tool(cc0 ${CC_DIR}/frontend.c)
@@ -76,6 +124,7 @@ kit_tool(cc1
     ${CC_DIR}/switch.c ${CC_DIR}/symbol.c ${CC_DIR}/tree.c
     ${CC_DIR}/type.c ${CC_DIR}/type_iterator.c ${CC_DIR}/target-thumb.c)
 # backend-bcode.c #includes backend-thumb.c; the depfile tracks it.
+target_link_libraries(cc1 PRIVATE ${PC3_LIBM})		# it folds constants
 kit_tool(cc2 ${CC_DIR}/backend.c ${CC_DIR}/backend-bcode.c)
 kit_tool(bcdump ${CC_DIR}/bcdump.c)
 kit_tool(dumptokens ${CC_DIR}/dumptokens.c)
@@ -90,11 +139,12 @@ set_target_properties(ccbc PROPERTIES OUTPUT_NAME cc)
 # one does, which is how the samples get compiled here before a package
 # is made.
 set(CCLAYOUT ${CMAKE_BINARY_DIR}/lib/cc)
+add_dependencies(ccbc cc0 cc1 cc2)
 add_custom_command(TARGET ccbc POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E make_directory ${CCLAYOUT}/include
-    COMMAND ${CMAKE_COMMAND} -E create_symlink ${BIN}/cc0 ${CCLAYOUT}/cc0
-    COMMAND ${CMAKE_COMMAND} -E create_symlink ${BIN}/cc1 ${CCLAYOUT}/cc1
-    COMMAND ${CMAKE_COMMAND} -E create_symlink ${BIN}/cc2 ${CCLAYOUT}/cc2
+    COMMAND ${CMAKE_COMMAND} -E ${PC3_LINK_OR_COPY} $<TARGET_FILE:cc0> ${CCLAYOUT}/$<TARGET_FILE_NAME:cc0>
+    COMMAND ${CMAKE_COMMAND} -E ${PC3_LINK_OR_COPY} $<TARGET_FILE:cc1> ${CCLAYOUT}/$<TARGET_FILE_NAME:cc1>
+    COMMAND ${CMAKE_COMMAND} -E ${PC3_LINK_OR_COPY} $<TARGET_FILE:cc2> ${CCLAYOUT}/$<TARGET_FILE_NAME:cc2>
     COMMAND ${CMAKE_COMMAND} -E copy_if_different ${PC3_CC_HEADERS} ${CCLAYOUT}/include
     VERBATIM)
 
@@ -105,6 +155,7 @@ add_custom_command(TARGET ccbc POST_BUILD
 # define the FUZIX sources know for "on a PC, talk to the server".
 add_library(pc3client STATIC client/pc3client.c)
 target_include_directories(pc3client PUBLIC client proto ${PLAT_DIR})
+target_link_libraries(pc3client PUBLIC ${PC3_SHIM})
 
 # TLS for the hosted bcrun: the board's IPPROTO_TLS socket is a kernel
 # socket over mbedtls; on a PC it is client/pc3tls.c over the same
@@ -115,10 +166,15 @@ add_library(mbedtls_all STATIC ${MBEDTLS_SRC})
 target_include_directories(mbedtls_all PUBLIC ext/mbedtls/include
                                        PRIVATE ext/mbedtls/library)
 target_compile_options(mbedtls_all PRIVATE -w -O2)
+if(WIN32)
+    # The library's own sockets and entropy are Winsock and BCrypt.  Not
+    # the shim: the library must see the system headers, not the stand-ins.
+    target_link_libraries(mbedtls_all PUBLIC ws2_32 bcrypt)
+endif()
 add_library(pc3tls STATIC client/pc3tls.c)
 target_include_directories(pc3tls PUBLIC client)
 target_compile_options(pc3tls PRIVATE -O2 -g -Wall -Wextra)
-target_link_libraries(pc3tls PUBLIC mbedtls_all)
+target_link_libraries(pc3tls PUBLIC mbedtls_all ${PC3_SHIM})
 target_compile_definitions(ccbc PRIVATE PC3_HOST)
 target_link_libraries(ccbc PRIVATE pc3client)
 
@@ -136,7 +192,7 @@ target_compile_definitions(bcrun PRIVATE PC3_HOST MM_PC3 MM_HOSTED_ONLY)
 # The kit's -O1 is the passes' flag; the interpreter is the program's
 # speed on a PC, and -O2 (last flag wins) is worth having there.
 target_compile_options(bcrun PRIVATE -O2)
-target_link_libraries(bcrun PRIVATE pc3client pc3tls m)
+target_link_libraries(bcrun PRIVATE pc3client pc3tls m ${PC3_LIBM})
 
 # The gates' bcrun: the display-less shape Makefile.host builds, which
 # is what every tests/*.expected was blessed against.  The board-shaped
@@ -149,13 +205,13 @@ set(GATEBIN ${CMAKE_BINARY_DIR}/gatebin)
 kit_tool(bcrun-gate ${CC_DIR}/bcrun.c ${LIBS_DIR}/fnum.c)
 target_include_directories(bcrun-gate PRIVATE ${MMB_DIR})
 target_compile_options(bcrun-gate PRIVATE -O2)
-target_link_libraries(bcrun-gate PRIVATE m)
+target_link_libraries(bcrun-gate PRIVATE m ${PC3_LIBM})
 set_target_properties(bcrun-gate PROPERTIES OUTPUT_NAME bcrun
                                             RUNTIME_OUTPUT_DIRECTORY ${GATEBIN})
 add_custom_command(TARGET bcrun-gate POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E create_symlink ${BIN}/cc0 ${GATEBIN}/cc0
-    COMMAND ${CMAKE_COMMAND} -E create_symlink ${BIN}/cc1 ${GATEBIN}/cc1
-    COMMAND ${CMAKE_COMMAND} -E create_symlink ${BIN}/cc2 ${GATEBIN}/cc2)
+    COMMAND ${CMAKE_COMMAND} -E ${PC3_LINK_OR_COPY} $<TARGET_FILE:cc0> ${GATEBIN}/$<TARGET_FILE_NAME:cc0>
+    COMMAND ${CMAKE_COMMAND} -E ${PC3_LINK_OR_COPY} $<TARGET_FILE:cc1> ${GATEBIN}/$<TARGET_FILE_NAME:cc1>
+    COMMAND ${CMAKE_COMMAND} -E ${PC3_LINK_OR_COPY} $<TARGET_FILE:cc2> ${GATEBIN}/$<TARGET_FILE_NAME:cc2>)
 add_dependencies(bcrun-gate cc0 cc1 cc2)
 
 # Fuzix's cpp.  fccbuild.sh uses gcc -E on the host today; this is what
@@ -163,6 +219,7 @@ add_dependencies(bcrun-gate cc0 cc1 cc2)
 add_executable(cpp ${CPP_DIR}/cpp.c ${CPP_DIR}/hash.c ${CPP_DIR}/main.c
                    ${CPP_DIR}/token1.c ${CPP_DIR}/token2.c)
 target_compile_options(cpp PRIVATE -w)
+target_link_libraries(cpp PRIVATE ${PC3_SHIM})
 
 # ---- mmbc: the translator in C ---------------------------------------------
 add_executable(mmbc
@@ -174,6 +231,7 @@ add_executable(mmbc
     ${MMB_DIR}/mmbc/mmbc_type.c ${MMB_DIR}/mmbc/mmbc_out.c
     ${MMB_DIR}/mmbc/mmbc_font.c)
 target_compile_options(mmbc PRIVATE -O2 -g -Wall -Wextra -Wno-unused-parameter)
+target_link_libraries(mmbc PRIVATE ${PC3_SHIM} ${PC3_LIBM})
 
 # ---- mmedit ------------------------------------------------------------------
 # The editor with its POSIX shim, as the pty harness has always built it.
@@ -193,6 +251,7 @@ function(pc3_util name)
     add_executable(${name} ${ARGN})
     target_compile_options(${name} PRIVATE -std=gnu99 -O2 -Wall -Wno-unused)
     target_include_directories(${name} PRIVATE ${UTIL_DIR} ${PLAT_DIR})
+    target_link_libraries(${name} PRIVATE ${PC3_SHIM})
 endfunction()
 function(pc3_image name)
     pc3_util(${name} ${ARGN})
@@ -232,6 +291,7 @@ add_executable(display_seam tests/seam/display_seam.c ${PLAT_DIR}/display.c)
 target_compile_definitions(display_seam PRIVATE PC3_HOST)
 target_include_directories(display_seam PRIVATE ${PLAT_DIR})
 target_compile_options(display_seam PRIVATE -g -Wall -Wextra -Wno-unused-parameter)
+target_link_libraries(display_seam PRIVATE ${PC3_SHIM})
 
 # ---- the C standard, and why it is pinned --------------------------------------
 # gcc 15 compiles C23 by default, and against glibc 2.38+ headers that
@@ -278,10 +338,18 @@ string(STRIP "${PC3_VERSION}" PC3_VERSION)
 # miniaudio (ext/miniaudio, one header, its implementation in
 # server/miniaudio.c; the backends are dlopen'd at run time).
 find_package(Threads REQUIRED)
+# The two files that talk to the operating system by name - where a
+# crash is reported, where the machine's network is asked - have a
+# Windows shape each.
+if(WIN32)
+    set(PC3D_OS server/crash_win.c server/netinfo_win.c)
+else()
+    set(PC3D_OS server/crash.c server/netinfo.c)
+endif()
 add_executable(pc3d
     server/pc3d.c server/dispatch.c server/disphw.c server/present.c
-    server/window.c server/fontdata.c server/keyboard.c server/crash.c
-    server/sndhw.c server/miniaudio.c server/netinfo.c server/presenter.c
+    server/window.c server/fontdata.c server/keyboard.c ${PC3D_OS}
+    server/sndhw.c server/miniaudio.c server/presenter.c
     ${PLAT_DIR}/display.c ${PLAT_DIR}/fonts.c ${PLAT_DIR}/kbd_decode.c
     ${PLAT_DIR}/sound.c)
 target_compile_definitions(pc3d PRIVATE PC3_HOST PC3D_VERSION="${PC3_VERSION}")
@@ -291,7 +359,10 @@ target_include_directories(pc3d PRIVATE server server/kstub proto ${PLAT_DIR}
                                         ext/minifb/include ext/miniaudio)
 target_compile_options(pc3d PRIVATE -O2 -g -Wall -Wextra -Wno-unused-parameter)
 set_source_files_properties(server/miniaudio.c PROPERTIES COMPILE_OPTIONS "-w")
-target_link_libraries(pc3d PRIVATE minifb X11 Threads::Threads ${CMAKE_DL_LIBS} m)
+target_link_libraries(pc3d PRIVATE minifb ${PC3_X11} Threads::Threads ${CMAKE_DL_LIBS} m ${PC3_SHIM})
+if(WIN32)
+    target_link_libraries(pc3d PRIVATE gdi32 user32 winmm ole32)
+endif()
 set_target_properties(pc3d PROPERTIES LINKER_LANGUAGE CXX)
 
 # The sound seam: sound.c compiled against stub hooks and driven
@@ -302,12 +373,14 @@ add_executable(sound_seam tests/seam/sound_seam.c ${PLAT_DIR}/sound.c)
 target_compile_definitions(sound_seam PRIVATE PC3_HOST)
 target_include_directories(sound_seam PRIVATE ${PLAT_DIR})
 target_compile_options(sound_seam PRIVATE -g -Wall -Wextra -Wno-unused-parameter)
+target_link_libraries(sound_seam PRIVATE ${PC3_SHIM})
 
 # ntpdate is what WEB NTP runs: on a PC it asks the server and leaves
 # the clock to the operating system (tools/ntpdate.c).  bcrun's own
 # directory is first on a program's PATH, so this is the one found.
 add_executable(ntpdate tools/ntpdate.c)
 target_compile_options(ntpdate PRIVATE -O2 -Wall)
+target_link_libraries(ntpdate PRIVATE ${PC3_SHIM})
 
 # pc3key presses keys in the server from a script (tests/e2e/run.sh).
 add_executable(pc3key tools/pc3key.c)
@@ -338,7 +411,18 @@ install(TARGETS pc3d bcrun mmbc mmedit cpp bcdump ccbc pc3key ntpdate
                 playmp3 playwav playflac playmod playsnd
         RUNTIME DESTINATION bin)
 install(TARGETS cc0 cc1 cc2 RUNTIME DESTINATION lib/cc)
-install(PROGRAMS packaging/pc3 DESTINATION bin)
+# The two sound probes go into the Windows package: there is no apt
+# there to fetch them later, and "does this machine make a sound" is
+# the first question a new installation raises.  pcmpace paces the PCM
+# ring and counts underruns; sndharness writes a WAV for PLAY to read.
+if(WIN32)
+    install(TARGETS pcmpace sndharness RUNTIME DESTINATION bin)
+endif()
+# The launcher is a shell script; the Windows package has pc3.cmd
+# instead, written by packaging/make-zip.sh.
+if(NOT WIN32)
+    install(PROGRAMS packaging/pc3 DESTINATION bin)
+endif()
 install(FILES ${PC3_CC_HEADERS} DESTINATION lib/cc/include)
 # The board's CA bundle (ten roots, 12K - the WEB TLS CA path holds 20K
 # at most).  A program's WEB TLS CA "/etc/ca.pem" finds this one when a
@@ -348,7 +432,7 @@ install(FILES ${PC3_CC_HEADERS} DESTINATION lib/cc/include)
 file(COPY ${PLAT_DIR}/ca.pem DESTINATION ${CMAKE_BINARY_DIR}/share/pc3host)
 install(FILES ${PLAT_DIR}/ca.pem DESTINATION share/pc3host)
 install(FILES README.md REVIEW.md PHASE0.md PHASE1.md PHASE2.md PHASE3.md
-              PHASE4.md PHASE5.md PHASE7.md
+              PHASE4.md PHASE5.md PHASE6.md PHASE7.md
               ${PLAT_DIR}/PC3-C-MANUAL.md ${MMB_DIR}/README.md
         DESTINATION share/doc/pc3host)
 file(GLOB PC3_MAN ${FUZIX_ROOT}/Applications/man1/bcrun.1
@@ -372,6 +456,20 @@ install(FILES tests/e2e/gfx1.bas tests/e2e/gfxc.c tests/e2e/keydemo.bas
         DESTINATION share/examples)
 # breakout with a stopwatch on its loop: for a machine where it is slow
 install(FILES tests/bench/breakout_timed.bas DESTINATION share/examples/samples)
+# The Windows gates travel with the Windows package: the machine that
+# runs the programs is the machine to run them on, and they need Git
+# Bash and nothing else.  The corpus one also wants the gate-shaped
+# bcrun, which is why it is here beside them.
+if(WIN32)
+    install(FILES tests/win/corpus.sh tests/win/e2e.sh tests/win/net.sh
+                  tests/win/window.sh tests/win/console_test.c
+            DESTINATION share/tests/win)
+    install(DIRECTORY tests/e2e/ DESTINATION share/tests/e2e)
+    install(DIRECTORY tests/net/ DESTINATION share/tests/net)
+    install(PROGRAMS $<TARGET_FILE:bcrun-gate> DESTINATION share/tests/gatebin)
+    install(PROGRAMS $<TARGET_FILE:cc0> $<TARGET_FILE:cc1> $<TARGET_FILE:cc2>
+            DESTINATION share/tests/gatebin)
+endif()
 install(DIRECTORY ${MMB_DIR}/samples/ DESTINATION share/examples/samples
         FILES_MATCHING PATTERN "*.bas" PATTERN "*.md")
 # The whole MMBasic directory from the FUZIX tree - the translator in

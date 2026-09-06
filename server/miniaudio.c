@@ -17,4 +17,8 @@
 #define MA_ENABLE_PULSEAUDIO
 #define MA_ENABLE_ALSA
 #define MA_ENABLE_NULL
+#ifdef _WIN32
+#define MA_ENABLE_WASAPI
+#define MA_ENABLE_WINMM
+#endif
 #include "miniaudio.h"

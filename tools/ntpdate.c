@@ -28,6 +28,14 @@
 #include <netinet/in.h>
 #include <sys/time.h>
 
+#ifdef _WIN32
+#define sock_close(fd) pc3w_sock_close(fd)
+#define PC3_RCVTIMEO(v, s) DWORD v = (s) * 1000	/* Winsock: milliseconds */
+#else
+#define sock_close(fd) close(fd)
+#define PC3_RCVTIMEO(v, s) struct timeval v = { (s), 0 }
+#endif
+
 #define NTP_EPOCH_OFFSET 2208988800UL	/* 1900 to 1970 */
 
 int main(int argc, char **argv)
@@ -67,7 +75,7 @@ int main(int argc, char **argv)
 		if (fd < 0)
 			continue;
 		for (tries = 0; tries < 3; tries++) {
-			struct timeval tv = { 2, 0 };
+			PC3_RCVTIMEO(tv, 2);
 			socklen_t sl = ai->ai_addrlen;
 			struct sockaddr_storage from;
 			int n;
@@ -92,12 +100,12 @@ int main(int argc, char **argv)
 					printf("%s ntpdate: %s answered; the clock is the system's\n",
 					       buf, server);
 				}
-				close(fd);
+				sock_close(fd);
 				freeaddrinfo(res);
 				return 0;
 			}
 		}
-		close(fd);
+		sock_close(fd);
 	}
 	freeaddrinfo(res);
 	fprintf(stderr, "ntpdate: no server suitable for synchronization found\n");

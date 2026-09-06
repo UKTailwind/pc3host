@@ -41,6 +41,13 @@
 #include "display_priv.h"
 #include "pc3d.h"
 
+/* the wake pipe is a socket pair on Windows (pc3d.c) */
+#ifdef _WIN32
+#define wake_write(fd, b, n) pc3w_send((fd), (b), (n), 0)
+#else
+#define wake_write(fd, b, n) write((fd), (b), (n))
+#endif
+
 pthread_mutex_t pc3d_display_lock = PTHREAD_MUTEX_INITIALIZER;
 
 static pthread_t thr;
@@ -163,7 +170,7 @@ static void *run(void *arg)
 		}
 		if (keyboard_pending() && wake_fd >= 0) {
 			char k = 'k';
-			if (write(wake_fd, &k, 1) < 0) { /* the loop is awake anyway */ }
+			if (wake_write(wake_fd, &k, 1) < 0) { /* the loop is awake anyway */ }
 		}
 	}
 	win_close();			/* on the thread the window lives on */

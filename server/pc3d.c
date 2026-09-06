@@ -56,6 +56,21 @@
 #include "pc3proto.h"
 #include "pc3d.h"
 
+/* The socket, read and written as one on both worlds: recv and send
+ * are read and write on a stream socket, and on Windows the descriptor
+ * is the shim's (pc3w.h), which read() and close() do not know. */
+#ifdef _WIN32
+#define sock_read(fd, b, n)  pc3w_recv((fd), (b), (n), 0)
+#define sock_write(fd, b, n) pc3w_send((fd), (b), (n), 0)
+#define sock_close(fd)       pc3w_sock_close(fd)
+#define PC3D_WAKE_PIPE(pf)   pc3w_socketpair(pf)	/* a pipe WSAPoll can watch */
+#else
+#define PC3D_WAKE_PIPE(pf)   pipe(pf)
+#define sock_read(fd, b, n)  read((fd), (b), (n))
+#define sock_write(fd, b, n) write((fd), (b), (n))
+#define sock_close(fd)       close(fd)
+#endif
+
 int pc3d_verbose;
 
 static struct client clients[PC3D_MAX_CLIENTS];
@@ -110,7 +125,7 @@ void pc3d_window_closed(void)
 	if (pc3d_verbose)
 		fprintf(stderr, "pc3d: window closed\n");
 	stopping = 1;
-	if (wake_w >= 0 && write(wake_w, &x, 1) < 0) { /* the loop will notice anyway */ }
+	if (wake_w >= 0 && sock_write(wake_w, &x, 1) < 0) { /* the loop will notice anyway */ }
 }
 
 /* Does a request change the picture?  The readers do not, and nor do
@@ -155,11 +170,17 @@ static void socket_default(char *buf, size_t n)
 		snprintf(buf, n, "%s", e);
 		return;
 	}
+#ifdef _WIN32
+	/* the temporary directory: AF_UNIX on Windows wants a path too */
+	(void)x;
+	snprintf(buf, n, "%s/%s", pc3w_tmpdir(), PC3_SOCKET_NAME);
+#else
 	x = getenv("XDG_RUNTIME_DIR");
 	if (x && *x)
 		snprintf(buf, n, "%s/%s", x, PC3_SOCKET_NAME);
 	else
 		snprintf(buf, n, "/tmp/pc3d-%u.sock", (unsigned)getuid());
+#endif
 }
 
 static int listen_on(const char *path)
@@ -175,11 +196,11 @@ static int listen_on(const char *path)
 		sa.sun_family = AF_UNIX;
 		snprintf(sa.sun_path, sizeof sa.sun_path, "%s", path);
 		if (connect(probe, (struct sockaddr *)&sa, sizeof sa) == 0) {
-			close(probe);
+			sock_close(probe);
 			fprintf(stderr, "pc3d: a server is already listening on %s\n", path);
 			return -1;
 		}
-		close(probe);
+		sock_close(probe);
 	}
 	unlink(path);
 
@@ -193,13 +214,13 @@ static int listen_on(const char *path)
 	snprintf(sa.sun_path, sizeof sa.sun_path, "%s", path);
 	if (bind(fd, (struct sockaddr *)&sa, sizeof sa) < 0) {
 		perror("pc3d: bind");
-		close(fd);
+		sock_close(fd);
 		return -1;
 	}
 	chmod(path, 0600);
 	if (listen(fd, 8) < 0) {
 		perror("pc3d: listen");
-		close(fd);
+		sock_close(fd);
 		return -1;
 	}
 	return fd;
@@ -282,7 +303,7 @@ static void client_close(struct client *c)
 	for (i = 0; i < PC3D_MAX_CLIENTS; i++)
 		if (clients[i].fd >= 0 && clients[i].pt.p_pptr == &c->pt)
 			clients[i].pt.p_pptr = NULL;
-	close(c->fd);
+	sock_close(c->fd);
 	free(c->buf);
 	c->buf = NULL;
 	c->bufcap = 0;
@@ -294,7 +315,7 @@ static int read_full(int fd, void *buf, size_t n)
 	unsigned char *p = buf;
 
 	while (n) {
-		ssize_t r = read(fd, p, n);
+		ssize_t r = sock_read(fd, p, n);
 		if (r < 0) {
 			if (errno == EINTR)
 				continue;
@@ -335,7 +356,7 @@ static int send_reply(struct client *c, int32_t ret, int32_t err,
 			b = (const unsigned char *)&rp + done;
 			l = sizeof rp - done;
 			while (l) {
-				ssize_t k = write(c->fd, b, l);
+				ssize_t k = sock_write(c->fd, b, l);
 				if (k < 0) return -1;
 				b += k; l -= (size_t)k;
 			}
@@ -345,7 +366,7 @@ static int send_reply(struct client *c, int32_t ret, int32_t err,
 		b = (const unsigned char *)data + done;
 		l = len - done;
 		while (l) {
-			ssize_t k = write(c->fd, b, l);
+			ssize_t k = sock_write(c->fd, b, l);
 			if (k < 0) return -1;
 			b += k; l -= (size_t)k;
 		}
@@ -379,7 +400,7 @@ static void keyring_flush(struct client *c)
 	int i;
 
 	for (i = 0; i < keyring_n; i++)
-		if (write(c->fd, &keyring[i], 1) != 1)
+		if (sock_write(c->fd, &keyring[i], 1) != 1)
 			break;
 	keyring_n = 0;
 }
@@ -416,7 +437,7 @@ static void key_flush(void)
 	}
 	/* non-blocking: a program that never reads must not stall the
 	 * display; a full pipe drops the bytes, as a full ring would */
-	if (write(k->fd, keyout, (size_t)keyout_n) < 0 && errno != EAGAIN)
+	if (sock_write(k->fd, keyout, (size_t)keyout_n) < 0 && errno != EAGAIN)
 		client_close(k);
 	keyout_n = 0;
 }
@@ -665,7 +686,7 @@ int main(int argc, char **argv)
 
 		/* the presenter's wake pipe: a key event on the window's
 		 * thread is a byte here, and the loop's poll returns */
-		if (pipe(pf) == 0) {
+		if (PC3D_WAKE_PIPE(pf) == 0) {
 			fcntl(pf[0], F_SETFL, fcntl(pf[0], F_GETFL) | O_NONBLOCK);
 			fcntl(pf[1], F_SETFL, fcntl(pf[1], F_GETFL) | O_NONBLOCK);
 			wake_r = pf[0];
@@ -727,7 +748,7 @@ int main(int argc, char **argv)
 			int k = 1;
 			if (wi >= 0 && (pfd[wi].revents & POLLIN)) {
 				char junk[64];
-				while (read(wake_r, junk, sizeof junk) > 0)
+				while (sock_read(wake_r, junk, sizeof junk) > 0)
 					;
 			}
 			if (pfd[0].revents & POLLIN) {
@@ -735,7 +756,7 @@ int main(int argc, char **argv)
 				if (fd >= 0) {
 					struct client *c = client_new(fd);
 					if (!c)
-						close(fd);
+						sock_close(fd);
 				}
 			}
 			for (i = 0; i < PC3D_MAX_CLIENTS; i++) {
@@ -795,7 +816,7 @@ out:
 	 * server still listening while the audio device was being shut
 	 * down, and on a desktop where that shutdown stalls it found it
 	 * for good - a live socket, no window, and a reboot to clear it. */
-	close(listen_fd);
+	sock_close(listen_fd);
 	unlink(sock_path);
 	presenter_stop();		/* it closes the window on its own thread */
 	for (i = 0; i < PC3D_MAX_CLIENTS; i++)
@@ -803,10 +824,16 @@ out:
 			client_close(&clients[i]);
 	/* and the audio device gets two seconds; the process is exiting
 	 * and the sound server reclaims a stream whose client has gone */
+#ifdef _WIN32
+	pc3w_alarm(2, on_exit_alarm);
+	sndhw_close();
+	pc3w_alarm(0, NULL);
+#else
 	signal(SIGALRM, on_exit_alarm);
 	alarm(2);
 	sndhw_close();
 	alarm(0);
+#endif
 	if (pc3d_verbose) {
 		unsigned long us = 0, pumps = 0, np = presenter_stats(&us, &pumps);
 
