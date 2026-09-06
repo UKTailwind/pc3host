@@ -97,7 +97,21 @@ def main():
     p, fd = spawn([mmedit, prog], env, work)
     out, drawn = read_until(fd, p, LEGEND, 5)
     check("the editor drew its screen", drawn)
-    os.write(fd, b'Print "hello from mmedit"')
+    # a comment first: on a PC the editor paints it BRIGHT yellow
+    # (SGR 93), the colour a PicoMite's TeraTerm shows for MMBasic's
+    # SGR 33, which a PC terminal would paint brown
+    os.write(fd, b"' a comment\r")
+    time.sleep(0.3)
+    # two stray characters, then the two deleting keys as a PC terminal
+    # sends them: Backspace is 0x7F and must delete BACKWARDS (the Y),
+    # Delete is ESC [ 3 ~ and deletes forwards (the X, after a Left)
+    os.write(fd, b'Print "hello from mmedit"XY')
+    time.sleep(0.3)
+    os.write(fd, b"\x7f")
+    time.sleep(0.2)
+    os.write(fd, b"\x1b[D")
+    time.sleep(0.2)
+    os.write(fd, b"\x1b[3~")
     time.sleep(0.3)
     os.write(fd, F1)
     out, _ = read_until(fd, p, None, 5)
@@ -106,6 +120,11 @@ def main():
     check("F1 left the editor cleanly", rc == 0)
     text = open(prog, "rb").read()
     check("the file holds the typed line", b'Print "hello from mmedit"' in text)
+    last = text.replace(b"\r\n", b"\n").rstrip(b"\n").split(b"\n")[-1]
+    check("Backspace deleted backwards and Delete forwards",
+          last == b'Print "hello from mmedit"')
+    check("the comment was painted bright yellow", b"\x1b[93m" in out)
+    check("no dim colours were emitted", b"\x1b[33m" not in out and b"\x1b[37m" not in out)
 
     # ---- F2: save, exit, compile and run -------------------------------------
     p, fd = spawn([mmedit, prog], env, work)

@@ -25,6 +25,32 @@ that records what it was asked - and it is run the same way, `-r` and
 the file. The line the editor prints before it goes says which. The
 board's arm of the code is untouched.
 
+## The colours
+
+The first person to use the hosted editor saw dull colours and brown
+comments. MMBasic's editor emits SGR 30-37 - `ESC[33m` for a comment -
+and what those look like is the terminal's choice: TeraTerm, which a
+PicoMite is edited through, paints them bright, so the editor was
+designed to be seen in bright yellow, cyan and magenta on black. A PC's
+terminal emulators paint 30-37 as their dim set and keep the bright set
+for 90-97, the aixterm codes every one of them has honoured for twenty
+years. Under `PC3_HOST` the editor asks for 90-97 and looks as it looks
+on a PicoMite; the board's console keeps 30-37, whose rendering is its
+own palette's, and `editor.o` for the board is byte-identical. The pty
+harness checks that a typed comment is painted `ESC[93m` and that no
+dim code is emitted.
+
+## Backspace
+
+The same person found Backspace and Delete both deleting forwards. A
+PC terminal's Backspace key sends 0x7F, which MMBasic's editor takes as
+its DEL, the forward delete; the board's keyboard and TeraTerm send
+0x08 for Backspace and `ESC [ 3 ~` for Delete, and a PC's Delete key
+sends that sequence too. So under `PC3_HOST` a bare 0x7F is Backspace,
+the only key it can be. The board's `shim.o` is byte-identical, and the
+harness now types two stray characters and removes them with the two
+keys as a PC terminal sends them.
+
 ## The pty harness
 
 There was no harness in the tree, despite the review's belief; the
