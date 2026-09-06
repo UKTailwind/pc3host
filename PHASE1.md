@@ -220,6 +220,28 @@ crossings a frame to 6; and `bcrun` is built `-O2` rather than the
 kit's `-O1`. Here the loop went from 7.5 to 4.8 ms a frame. On a
 machine where a crossing is dear the saving is the larger part.
 
+**Closing the window (found 2026-09-06).** The first user found that
+after a reboot everything ran, and that closing the window with its
+button left something behind: the next run found "a server already
+listening" and no window. Two things were wrong. The server's exit
+path shut the audio device down *before* closing its socket, so for
+as long as that shutdown took - on a desktop where it stalls, for good
+- a live socket with no window sat there, and only a reboot cleared it;
+the socket is closed and unlinked first now, and the audio shutdown
+gets two seconds. And the program whose window was closed ran on
+unseen: one waiting in `INKEY$` spun with nothing to read, one drawing
+drew into the void. On the board the display never goes away; on a PC
+the closed window is the user stopping the program, so the client now
+interrupts the program when its server goes - as the window's Ctrl-C
+does, or with SIGTERM where a background job has SIGINT ignored.
+Pressed through the X server with `tools/xclose.c`: with a program at
+its title screen the server and the program both exit; with none, the
+server exits; the next run starts a fresh server. A server started by a
+program also writes its messages to `pc3d.log` beside its socket now,
+rather than to the program's stdout, which in a pipeline it held open
+for as long as it lived. And the window's title follows the MODE, not
+the raster: MMBasic's MODE 2 shares the console's and kept its name.
+
 **A server outlives an upgrade.** The display server stays up after a
 program exits, as the board's picture does, so it survives a package
 upgrade and a new program talks to the old server without knowing.

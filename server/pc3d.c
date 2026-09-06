@@ -95,6 +95,13 @@ static void on_signal(int sig)
 	stopping = 1;
 }
 
+/* The audio device's shutdown did not come back: leave without it. */
+static void on_exit_alarm(int sig)
+{
+	(void)sig;
+	_exit(0);
+}
+
 /* The presenter found the window closed: the display has gone away. */
 void pc3d_window_closed(void)
 {
@@ -783,13 +790,23 @@ int main(int argc, char **argv)
 		}
 	}
 out:
+	/* The socket first: from here on nobody can connect to a server
+	 * that is going.  A program whose window has gone found the
+	 * server still listening while the audio device was being shut
+	 * down, and on a desktop where that shutdown stalls it found it
+	 * for good - a live socket, no window, and a reboot to clear it. */
+	close(listen_fd);
+	unlink(sock_path);
 	presenter_stop();		/* it closes the window on its own thread */
 	for (i = 0; i < PC3D_MAX_CLIENTS; i++)
 		if (clients[i].fd >= 0)
 			client_close(&clients[i]);
+	/* and the audio device gets two seconds; the process is exiting
+	 * and the sound server reclaims a stream whose client has gone */
+	signal(SIGALRM, on_exit_alarm);
+	alarm(2);
 	sndhw_close();
-	close(listen_fd);
-	unlink(sock_path);
+	alarm(0);
 	if (pc3d_verbose) {
 		unsigned long us = 0, pumps = 0, np = presenter_stats(&us, &pumps);
 

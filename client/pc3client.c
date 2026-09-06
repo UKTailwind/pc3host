@@ -148,16 +148,32 @@ static void start_server(void)
 		return;
 	if (pid == 0) {
 		/* the grandchild is the server: no controlling terminal,
-		 * no parent to wait for it, stdin from nowhere */
+		 * no parent to wait for it, stdin from nowhere, and its
+		 * messages in a log beside its socket rather than on the
+		 * program's stdout - which, in a pipeline, it would have
+		 * held open for as long as it lived */
+		char log[4096];
+		const char *x;
+		int nul, lf;
+
 		if (fork() != 0)
 			_exit(0);
 		setsid();
-		{
-			int nul = open("/dev/null", O_RDONLY);
-			if (nul >= 0) {
-				dup2(nul, 0);
-				close(nul);
-			}
+		nul = open("/dev/null", O_RDONLY);
+		if (nul >= 0) {
+			dup2(nul, 0);
+			close(nul);
+		}
+		x = getenv("XDG_RUNTIME_DIR");
+		if (x && *x)
+			snprintf(log, sizeof log, "%s/pc3d.log", x);
+		else
+			snprintf(log, sizeof log, "/tmp/pc3d-%u.log", (unsigned)getuid());
+		lf = open(log, O_WRONLY | O_CREAT | O_TRUNC, 0600);
+		if (lf >= 0) {
+			dup2(lf, 1);
+			dup2(lf, 2);
+			close(lf);
 		}
 		execlp(bin, bin, (char *)NULL);
 		_exit(127);
@@ -276,6 +292,31 @@ int pc3_sys_close(int fd)
 
 /* --- the exchange ------------------------------------------------------------ */
 
+/*
+ * The server went away under a running program - its window was closed,
+ * or it died.  On the board the display never goes away; on a PC the
+ * closed window IS the user stopping the program, so the program is
+ * interrupted as the window's Ctrl-C interrupts it (pc3_rd1), once.
+ * Without this a program in an INKEY$ loop ran on unseen with nothing
+ * to draw on, and one drawing in a loop drew into the void until it
+ * ended on its own.
+ */
+static void server_gone(void)
+{
+	static int done;
+	struct sigaction old;
+
+	if (done)
+		return;
+	done = 1;
+	/* a program started in the background by a non-interactive shell
+	 * has SIGINT ignored; the runtime's guards cover SIGTERM too */
+	if (sigaction(SIGINT, NULL, &old) == 0 && old.sa_handler == SIG_IGN)
+		raise(SIGTERM);
+	else
+		raise(SIGINT);
+}
+
 static int read_full(int fd, void *buf, size_t n)
 {
 	unsigned char *p = buf;
@@ -328,9 +369,8 @@ static long exchange(int fd, uint16_t code, uint32_t arg,
 	{
 		ssize_t w = writev(fd, iov, niov);
 		if (w < 0) {
-			if (errno != EPIPE)
-				return -1;
-			errno = EPIPE;
+			if (errno == EPIPE || errno == ECONNRESET)
+				server_gone();
 			return -1;
 		}
 		if ((size_t)w != total) {
@@ -353,8 +393,11 @@ static long exchange(int fd, uint16_t code, uint32_t arg,
 			}
 		}
 	}
-	if (read_full(fd, &rp, sizeof rp) < 0)
+	if (read_full(fd, &rp, sizeof rp) < 0) {
+		if (errno == EPIPE || errno == ECONNRESET)
+			server_gone();
 		return -1;
+	}
 	if (rp.len > PC3_MAX_PAYLOAD) {
 		errno = EPROTO;
 		return -1;
@@ -925,6 +968,8 @@ int pc3_rd1(void)
 		close(keyfd);		/* the server went away */
 		keyfd = -1;
 		key_retry = 0;
+		server_gone();		/* and with it the program's display */
+		return -1;
 	}
 	if (ti >= 0 && (p[ti].revents & (POLLIN | POLLHUP | POLLERR))) {
 		ssize_t k = read(0, &c, 1);

@@ -54,6 +54,7 @@ static int wake_fd = -1;
 static uint32_t *frame;
 static size_t frame_cap;
 static int last_w, last_h;
+static char last_title[64];
 static unsigned long presents, present_us, pumps;
 
 static long long now_us(void)
@@ -136,9 +137,16 @@ static void *run(void *arg)
 					pc3d_window_closed();
 					break;
 				}
-				win_title(title);
 				last_w = w;
 				last_h = h;
+				last_title[0] = 0;
+			}
+			/* the name follows the MODE, not the size: MMBasic's
+			 * MODE 2 shares the console's raster and kept the
+			 * console's title */
+			if (strcmp(title, last_title) != 0) {
+				win_title(title);
+				snprintf(last_title, sizeof last_title, "%s", title);
 			}
 			if (win_present(frame, w, h) < 0) {
 				pc3d_window_closed();

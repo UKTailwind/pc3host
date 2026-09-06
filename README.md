@@ -64,6 +64,16 @@ of your own first:
     cp -r /opt/pc3/share/examples ~/pc3
     cd ~/pc3/samples && mmedit breakout.bas
 
+## The window
+
+The first program to draw starts the display server and opens the
+window; the server stays up after the program ends, so the picture
+survives it, as on the board. Closing the window with its button stops
+the server and interrupts whatever program is using it, as Ctrl-C
+would. A server started by a program writes its messages to
+`pc3d.log` beside its socket (`$XDG_RUNTIME_DIR`, usually
+`/run/user/<uid>`).
+
 ## If a program is slow
 
 The display server stays up after a program exits, so it survives a
