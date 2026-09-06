@@ -32,7 +32,7 @@ ctest --test-dir build               # the gates, section "Gates" below
 ```
 
 `build/bin` then holds `mmbc`, `cpp`, `cc0`, `cc1`, `cc2`, `ccbc`,
-`bcrun`, `bcdump`, `dumptokens`, `mmedit`, `loadjpg`, `loadpng`,
+`bcrun`, `bcdump`, `dumptokens`, `mmbedit`, `loadjpg`, `loadpng`,
 `loadimage`, `saveimage`, `playmp3`, `playwav`, `playflac`, `playmod`,
 `playsnd` and `display_seam`. Twenty targets, all from unmodified
 sources; the compiler passes take exactly the flags of

@@ -27,7 +27,7 @@ dpkg-deb -I "$DEB" | sed -n '/Package:/,/Installed-Size:/p'
 echo "bin: $(ls "$P/bin" | tr '\n' ' ')"
 echo "lib/cc: $(ls "$P/lib/cc" | tr '\n' ' ') ($(ls "$P/lib/cc/include" | wc -l) headers)"
 echo "share: $(ls "$P/share" | tr '\n' ' '); mmb2c: $(find "$P/share/mmb2c" -type f | wc -l) files"
-for f in bcrun cc mmbc mmedit; do
+for f in bcrun cc mmbc mmbedit; do
 	file "$P/bin/$f" | grep -q "statically linked" && echo "$f: static" || { echo "$f: NOT static"; fail=1; }
 done
 # pc3d is dynamic on purpose (libX11's dlopen of libXcursor); what it

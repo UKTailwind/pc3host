@@ -2,7 +2,7 @@
 #
 # pc3 - the Pico Computer 3 toolchain on the PATH.
 #
-#   pc3                  a shell with cc, bcrun, mmbc, mmedit and pc3d
+#   pc3                  a shell with cc, bcrun, mmbc, mmbedit and pc3d
 #                        first on the PATH; type exit to leave
 #   pc3 command args...  run one command that way, e.g. pc3 cc -r prog.bas
 #
@@ -11,7 +11,7 @@
 # in this directory, and this script puts the directory first on the
 # PATH for a shell or for one command.  Everything else here that does
 # not clash with a Linux name is also linked from /usr/bin by the
-# package, so bcrun, mmbc, mmedit and pc3d work from any shell.
+# package, so bcrun, mmbc, mmbedit and pc3d work from any shell.
 #
 # Wherever this tree was installed - /opt/pc3 by the package, or a
 # build directory - is found from this script's own location.
@@ -24,6 +24,6 @@ export PATH
 if [ $# -gt 0 ]; then
 	exec "$@"
 fi
-echo "Pico Computer 3 on $(uname -s).  cc, bcrun, mmbc, mmedit and pc3d are on the PATH;"
+echo "Pico Computer 3 on $(uname -s).  cc, bcrun, mmbc, mmbedit and pc3d are on the PATH;"
 echo "examples are in $PC3_HOME/share/examples.  Type exit to leave."
 exec "${SHELL:-/bin/sh}"

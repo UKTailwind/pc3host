@@ -30,7 +30,7 @@ message(STATUS "FUZIX_ROOT: ${FUZIX_ROOT}")
 set(CC_DIR   ${FUZIX_ROOT}/Applications/CC)
 set(MMB_DIR  ${FUZIX_ROOT}/Applications/mmb2c)
 set(CPP_DIR  ${FUZIX_ROOT}/Applications/cpp)
-set(ED_DIR   ${FUZIX_ROOT}/Applications/mmedit)
+set(ED_DIR   ${FUZIX_ROOT}/Applications/mmbedit)
 set(PLAT_DIR ${FUZIX_ROOT}/Kernel/platform/platform-rpipico)
 set(UTIL_DIR ${PLAT_DIR}/utils)
 set(LIBS_DIR ${FUZIX_ROOT}/Library/libs)
@@ -233,14 +233,14 @@ add_executable(mmbc
 target_compile_options(mmbc PRIVATE -O2 -g -Wall -Wextra -Wno-unused-parameter)
 target_link_libraries(mmbc PRIVATE ${PC3_SHIM} ${PC3_LIBM})
 
-# ---- mmedit ------------------------------------------------------------------
+# ---- mmbedit ------------------------------------------------------------------
 # The editor with its POSIX shim, as the pty harness has always built it.
-add_executable(mmedit ${ED_DIR}/mmedit.c ${ED_DIR}/shim.c
+add_executable(mmbedit ${ED_DIR}/mmbedit.c ${ED_DIR}/shim.c
                       ${ED_DIR}/editor.c ${ED_DIR}/keywords.c)
-target_include_directories(mmedit PRIVATE ${ED_DIR})
-target_compile_options(mmedit PRIVATE -O0 -g)
-target_compile_definitions(mmedit PRIVATE PC3_HOST)	# F2 runs the cc beside it
-target_link_libraries(mmedit PRIVATE pc3client)
+target_include_directories(mmbedit PRIVATE ${ED_DIR})
+target_compile_options(mmbedit PRIVATE -O0 -g)
+target_compile_definitions(mmbedit PRIVATE PC3_HOST)	# F2 runs the cc beside it
+target_link_libraries(mmbedit PRIVATE pc3client)
 
 # ---- the programs around a program: loaders and players ------------------
 # The image programs and the players open /dev/sys through pc3sys.h and
@@ -389,7 +389,7 @@ target_link_libraries(pc3key PRIVATE pc3client)
 
 # ---- static linking, the link step (the option is declared above MiniFB) ----
 if(PC3_STATIC)
-    foreach(t cc0 cc1 cc2 bcdump dumptokens ccbc bcrun bcrun-gate cpp mmbc mmedit
+    foreach(t cc0 cc1 cc2 bcdump dumptokens ccbc bcrun bcrun-gate cpp mmbc mmbedit
               loadjpg loadpng loadimage saveimage playmp3 playwav playflac playmod
               playsnd pcmpace sndharness pc3key ntpdate display_seam sound_seam)
         target_link_options(${t} PRIVATE -static)
@@ -406,7 +406,7 @@ endif()
 #   bin/         the programs, and cc, and the pc3 launcher
 #   lib/cc/      cc0 cc1 cc2 and include/, as /usr/lib/cc on the board
 #   share/       documentation, the man pages as text, and the examples
-install(TARGETS pc3d bcrun mmbc mmedit cpp bcdump ccbc pc3key ntpdate
+install(TARGETS pc3d bcrun mmbc mmbedit cpp bcdump ccbc pc3key ntpdate
                 loadjpg loadpng loadimage saveimage
                 playmp3 playwav playflac playmod playsnd
         RUNTIME DESTINATION bin)
@@ -438,7 +438,7 @@ install(FILES README.md REVIEW.md PHASE0.md PHASE1.md PHASE2.md PHASE3.md
 file(GLOB PC3_MAN ${FUZIX_ROOT}/Applications/man1/bcrun.1
                   ${FUZIX_ROOT}/Applications/man1/cc.1
                   ${FUZIX_ROOT}/Applications/man1/mmbc.1
-                  ${FUZIX_ROOT}/Applications/man1/mmedit.1
+                  ${FUZIX_ROOT}/Applications/man1/mmbedit.1
                   ${FUZIX_ROOT}/Applications/man1/saveimage.1
                   ${FUZIX_ROOT}/Applications/man1/loadjpg.1
                   ${FUZIX_ROOT}/Applications/man1/loadpng.1)
@@ -531,8 +531,8 @@ set_tests_properties(corpus-display PROPERTIES TIMEOUT 1800 RESOURCE_LOCK symtmp
 # Phase 5: the editor through a pseudo-terminal - type, F1, then F2
 # compiling and running through this build's cc (tests/editor).
 add_test(NAME editor-pty
-    COMMAND python3 ${CMAKE_SOURCE_DIR}/tests/editor/mmedit_pty.py
-            ${BIN}/mmedit ${BIN}/cc ${GATE}/editor)
+    COMMAND python3 ${CMAKE_SOURCE_DIR}/tests/editor/mmbedit_pty.py
+            ${BIN}/mmbedit ${BIN}/cc ${GATE}/editor)
 set_tests_properties(editor-pty PROPERTIES TIMEOUT 180 RESOURCE_LOCK symtmp LABELS e2e)
 
 # Phase 7: the WEB family on the loopback - a TCP client against a

@@ -47,7 +47,7 @@ int pc3_inject_key(int fd, int mfb_key, int pressed);
 /* --- where things are ---------------------------------------------------------
  *
  * The directory this executable is in, and PATH with it in front - so
- * cc finds mmbc and cpp, bcrun finds saveimage and loadjpg, and mmedit
+ * cc finds mmbc and cpp, bcrun finds saveimage and loadjpg, and mmbedit
  * finds cc, wherever the tree was installed or built. */
 int pc3_exe_dir(char *buf, size_t n);
 void pc3_path_prepend(void);

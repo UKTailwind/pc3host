@@ -18,7 +18,7 @@
 #   pc3host\pc3.cmd        a command prompt with bin first on the PATH
 #
 # There are no symlinks in a zip and no /usr/bin on Windows, so pc3.cmd
-# is the whole of the installation: run it, and cc, bcrun, mmedit and
+# is the whole of the installation: run it, and cc, bcrun, mmbedit and
 # the rest are on the PATH of that window.
 set -e
 R=$(cd "$(dirname "$0")/.." && pwd)
@@ -40,6 +40,15 @@ cmake -S "$R" -B "$B" -DCMAKE_TOOLCHAIN_FILE="$R/cmake/toolchain-mingw64.cmake" 
 cmake --build "$B" -j"$(nproc)" 2>&1 | grep -E "error|Error" || true
 DESTDIR=$S cmake --install "$B" > /dev/null
 
+# The installer, its undo, and the PowerShell they share: they put
+# <folder>\bin on this account's PATH and register .bc, which is what
+# turns "specify the path to the executables" into typing cc.
+cp "$R/packaging/win/install.cmd" "$R/packaging/win/uninstall.cmd" \
+   "$R/packaging/win/pc3env.ps1" "$S/"
+for f in install.cmd uninstall.cmd pc3env.ps1; do
+	unix2dos -q "$S/$f" 2> /dev/null || sed -i 's/$/\r/' "$S/$f"
+done
+
 # The launcher.  %~dp0 is the directory this file is in, with a trailing
 # backslash, so the zip works wherever it lands.
 cat > "$S/pc3.cmd" <<'EOF'
@@ -50,7 +59,7 @@ rem   pc3.cmd cc -r x.bas   runs one command that way
 set "PC3=%~dp0"
 set "PATH=%PC3%bin;%PATH%"
 if "%~1"=="" (
-    echo Pico Computer 3 tools.  cc, bcrun, mmbc, mmedit, pc3d are on the PATH.
+    echo Pico Computer 3 tools.  cc, bcrun, mmbc, mmbedit, pc3d are on the PATH.
     cmd /k
 ) else (
     %*
@@ -64,23 +73,46 @@ cat > "$S/README-WINDOWS.txt" <<'EOF'
 The Pico Computer 3's BASIC toolchain, for Windows
 ==================================================
 
-Unpack this folder anywhere and run pc3.cmd.  It opens a command
-prompt with the tools on its PATH; nothing is installed, no runtime is
-needed, and deleting the folder removes it.
+Unpack this folder anywhere.  Then either
 
-    pc3.cmd
+    install.cmd     put the tools on your PATH for good, and teach
+                    Windows that a .bc file is a program.  No
+                    administrator rights; uninstall.cmd undoes it.
+                    OPEN A NEW COMMAND PROMPT afterwards.
 
-Then, in that window:
+or, to try it without changing anything,
+
+    pc3.cmd         a command prompt with the tools on the PATH, for
+                    as long as that window is open
+
+Either way, no runtime is needed and deleting the folder removes the
+tools.
+
+Then:
 
     cc -r share\examples\gfx1.bas        a picture, in a window
     cc -r share\examples\keydemo.bas     the keyboard
     cc -r share\examples\pc3bench.bas    what each kind of thing costs
-    mmedit myprog.bas                     the editor; F2 builds and runs
+    mmbedit myprog.bas                     the editor; F2 builds and runs
 
-cc takes a .bas or a .c file and writes a .bc, which bcrun runs; cc -r
-does both.  The examples are under share\examples, the samples the
-board ships with under share\examples\samples, and the whole
-translator source and its test corpus under share\mmb2c.
+cc takes a .bas or a .c file and writes a .bc beside your working
+directory, and bcrun runs it; cc -r does both at once.  To run one you
+built earlier:
+
+    bcrun myprog.bc         anywhere, and the one to use in PowerShell
+    .\myprog.bc             in a command prompt, note the BACKslash
+
+A command prompt will not take ./ for a program in the current folder,
+and neither shell will run a bare "myprog": a .bc is not a Windows
+executable, it is a file that bcrun runs, the way a #! line has the
+board run it.  install.cmd registers the extension, so a double click
+in Explorer runs one - and so does ./myprog.bc in PowerShell, though
+PowerShell then treats it as a document it has opened rather than a
+program it is running, and will not let you pipe its output.
+
+The examples are under share\examples, the samples the board ships
+with under share\examples\samples, and the whole translator source
+and its test corpus under share\mmb2c.
 
 The window
 ----------

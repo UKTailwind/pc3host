@@ -38,7 +38,7 @@ DESTDIR=$S cmake --install "$B" > /dev/null
 
 # the names a PC has no other use for
 mkdir -p "$S/usr/bin" "$S/DEBIAN"
-for f in pc3 pc3d bcrun bcdump mmbc mmedit pc3key saveimage loadimage loadjpg loadpng \
+for f in pc3 pc3d bcrun bcdump mmbc mmbedit pc3key saveimage loadimage loadjpg loadpng \
          playmp3 playwav playflac playmod playsnd; do
 	ln -sf /opt/pc3/bin/$f "$S/usr/bin/$f"
 done

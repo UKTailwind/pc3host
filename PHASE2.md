@@ -84,10 +84,10 @@ On the board the compiler is `/usr/bin/cc`, its passes are in
   directory, and `cpp`, `mmbc` and `bcrun` beside itself; `-r` runs
   `bcrun` by that path rather than through the object's `#!` line, and
   the line it writes is `#!/usr/bin/env bcrun`.
-* `mmedit`'s F2 runs the `cc` beside it.
+* `mmbedit`'s F2 runs the `cc` beside it.
 
 All of it is `#ifdef PC3_HOST` with the board's code in the `#else`.
-The board's `bcrun.o`, `ccbc.o` and `mmedit.o`, compiled from before
+The board's `bcrun.o`, `ccbc.o` and `mmbedit.o`, compiled from before
 and after with the tree's ARM flags and stripped of debug information,
 are byte-identical.
 

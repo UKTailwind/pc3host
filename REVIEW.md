@@ -2,7 +2,7 @@
 
 A review of what it would take to run the Fuzix-side MMBasic toolchain
 (mmbc, the Compiler Kit `cc`, `bcrun`, the image loaders, the players and
-`mmedit`) as native programs on a PC, with MiniFB for the display,
+`mmbedit`) as native programs on a PC, with MiniFB for the display,
 miniaudio for sound, and the host keyboard behind `INKEY$` and `KEYDOWN`.
 
 Written 2026-09-05 against FUZIX `pc3` at `e48007c85` and the
@@ -16,7 +16,7 @@ board numbers are the ones recorded in the trees' own notes.
 
 **It is feasible, and most of it already runs on a PC.** The translator
 is host-built C, the compiler passes and `bcrun` have a host build that
-the test gates use daily, `mmedit` compiles with plain gcc, and the
+the test gates use daily, `mmbedit` compiles with plain gcc, and the
 runtime compiles display-less for the gates. The decoders (picojpeg,
 upng, dr_mp3, dr_wav, dr_flac, hxcmod) are portable by construction,
 and the keyboard decoder already runs on a PC inside the MicroPython
@@ -64,7 +64,7 @@ the compiler needs to change in a way the board would notice.
 | `cc0`, `cc1`, `cc2`, `cpp` | `Applications/CC`, `Applications/cpp` | cc1 6,283; cpp 2,873 | yes, `Makefile.host` | files |
 | `bcrun` + `bcrun_mm.c` | `Applications/CC` | 3,922 + 815 | yes, `host-armm0/bcrun`; also `qemu-armm0` | `mmap` at a fixed address; native Thumb on ARM only |
 | `ccbc`, the `cc` driver | `Applications/CC/ccbc.c` | small | yes | fork, pipes, `/usr/lib/cc` paths |
-| `mmedit` | `Applications/mmedit` | 4,486 | yes, plain gcc with a pty harness | termios, two mode ioctls, `execv /usr/bin/cc` |
+| `mmbedit` | `Applications/mmbedit` | 4,486 | yes, plain gcc with a pty harness | termios, two mode ioctls, `execv /usr/bin/cc` |
 | `playmp3`, `playwav`, `playflac`, `playmod`, `playsnd` | `Kernel/platform/platform-rpipico/utils` | 143 / 108 / 147 / 287 / 464 + `pcmplay.h` | decoders yes | `SNDIOC_PCM*`, the control FIFO, `SIGINT` |
 | `loadjpg`, `loadpng`, `loadimage`, `saveimage` | same | 362 / 358 / 676 / 156 | decoders yes | `GFXIOC_PIXELS`, `GETPIXEL`, PSRAM arena, pipes |
 | display core `display.c` | kernel | 2,202 (about 1,100 drawing and framebuffer, 700 scanout) | no | HSTX, DMA, core1 |
@@ -129,7 +129,7 @@ helpers touch the operating system:
   runtime already says so and names `_kbhit`/`_getch`.
 * **Processes.** Three `fork`+`execvp` sites and one `execv` in the
   runtime (players, loaders, `SYSTEM`), `waitpid`, and `kill(SIGINT)`
-  to stop a player. `mmedit`'s F2 is an `execv` of `/usr/bin/cc`.
+  to stop a player. `mmbedit`'s F2 is an `execv` of `/usr/bin/cc`.
 * **The control FIFO** `/tmp/.playctl` and the kind file
   `/tmp/.playkind`, whose semantics were pinned to the Fuzix kernel by
   `fifotest.c` and are not POSIX.
@@ -213,7 +213,7 @@ On a PC this maps without invention:
 
 | board | host |
 |---|---|
-| serial console (TeraTerm) | the terminal the program was started from: stdin, stdout, `mmedit`, the shell |
+| serial console (TeraTerm) | the terminal the program was started from: stdin, stdout, `mmbedit`, the shell |
 | screen console | the server window, when a program has opened the display |
 | `console_putc` mirroring to both | the client library tees console output to the server while a window is open; `CONMIRROR` means exactly what it means today |
 | USB keyboard feeding tty and `KEYDOWN` | window keys go to the server, which updates the `KEYDOWN` table and forwards typed characters to the client that owns the display |
@@ -334,7 +334,7 @@ held set with modifiers and locks, the MiniFB callbacks are enough.
   lack `afunix.h`; declaring `sockaddr_un` locally is the known fix.
   Named pipes are the fallback.
 * **Processes.** The four spawn sites in the runtime and the one in
-  `mmedit` go behind an `mm_spawn()` seam: `fork`/`execvp` on POSIX,
+  `mmbedit` go behind an `mm_spawn()` seam: `fork`/`execvp` on POSIX,
   `_spawnvp` or `CreateProcess` on Windows; `waitpid` becomes
   `WaitForSingleObject`; `kill(SIGINT)` becomes the server message
   described above.
@@ -342,7 +342,7 @@ held set with modifiers and locks, the MiniFB callbacks are enough.
   and `ENABLE_VIRTUAL_TERMINAL_PROCESSING` gives raw input and ANSI
   output on Windows 10 and later; `ReadConsoleInput` replaces the
   `VMIN=0` read; `GetConsoleScreenBufferInfo` replaces `TIOCGWINSZ`.
-  `mmedit`'s `shim.c` is the one file that changes, and the runtime's
+  `mmbedit`'s `shim.c` is the one file that changes, and the runtime's
   raw-hold path gets the same shim. The runtime already carries
   `_WIN32` branches for directories and `conio.h`.
 * **`bcrun`.** It maps the VM's memory at a fixed address because a
@@ -358,7 +358,7 @@ held set with modifiers and locks, the MiniFB callbacks are enough.
   least machinery. MSVC is possible, the runtime was written with it
   in mind, but it means a second build description.
 * **Distribution.** One zip: the server, `bcrun`, `cc`, `cpp`, the
-  three passes, `mmbc`, `mmedit`, the loaders and players, and the
+  three passes, `mmbc`, `mmbedit`, the loaders and players, and the
   `include` directory `ccbc` needs.
 
 ### 4.7 WSL
@@ -374,7 +374,7 @@ a real vertical blank.
 ## 5. `cc` versus a native compiler
 
 First, the frame. `cc` was never the toolchain for the helpers. On the
-board `playmp3`, `loadjpg`, `mmedit`, `mmbc` and `bcrun` itself are
+board `playmp3`, `loadjpg`, `mmbedit`, `mmbc` and `bcrun` itself are
 cross-compiled with `arm-none-eabi-gcc`; on a PC they are built with
 gcc, clang or MinGW. The Compiler Kit compiles one thing: **the C that
 the translator emits from a BASIC program**, plus hand-written C by
@@ -490,7 +490,7 @@ the trees' own rule of harness first.
 
 **Phase 0, the repository and source sharing.** No third copies. The
 FUZIX `pc3` tree and the MicroPython tree are submodules; CMake builds
-`mmbc`, `cpp`, `cc0`/`cc1`/`cc2`, `ccbc`, `bcrun`, `mmedit`, the loaders
+`mmbc`, `cpp`, `cc0`/`cc1`/`cc2`, `ccbc`, `bcrun`, `mmbedit`, the loaders
 and the players from their present locations, with the display-less
 runtime, and today's gates run green from the new tree. The kernel
 files needed by the server (`display.c`'s drawing core, `console.c`'s
@@ -523,10 +523,10 @@ interrupts whose latencies were measured on the board. Gate: the
 LOADPNG` down its pipe, `SYSTEM`. Gate: the image tests in `samples/`
 against board captures.
 
-**Phase 5, the editor and the driver.** `mmedit` with a configurable
+**Phase 5, the editor and the driver.** `mmbedit` with a configurable
 compiler command, `cc -r prog.bas` end to end, relocatable install
 paths in `ccbc` (it hard-codes `/usr/lib/cc`, `/usr/bin/cpp` and
-`/usr/bin/mmbc`). Gate: the pty harness that already drives `mmedit`,
+`/usr/bin/mmbc`). Gate: the pty harness that already drives `mmbedit`,
 and the book's build-and-run walkthrough followed on a PC.
 
 **Phase 6, Windows.** MinGW-w64 build, the console shim, the spawn
@@ -619,7 +619,7 @@ Rough sizes:
 ## 8. What the user ends up with
 
 A terminal and a window. In the terminal, `mmbc prog.bas`, `cc -r
-prog.bas`, `bcrun prog.bc`, `mmedit prog.bas` with F2 compiling and
+prog.bas`, `bcrun prog.bc`, `mmbedit prog.bas` with F2 compiling and
 running, exactly the commands the PC3 manual teaches. In the window,
 the PC3's screen: the same modes, palette, fonts, sprites, layers and
 framebuffers, drawn by the same code. The keyboard works for `INKEY$`

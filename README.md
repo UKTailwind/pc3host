@@ -2,7 +2,7 @@
 
 The Pico Computer 3's BASIC environment, hosted on a PC: the `mmbc`
 translator, the Compiler Kit `cc`, the `bcrun` runtime, the image
-loaders, the players and `mmedit`, running natively on Linux, WSL and
+loaders, the players and `mmbedit`, running natively on Linux, WSL and
 Windows with MiniFB for the display and miniaudio for sound.
 
 Start with [REVIEW.md](REVIEW.md), which surveys what exists in the
@@ -76,12 +76,12 @@ what the platform made us change, and the shim itself is
 ## Editing the examples
 
 The examples and the MMBasic directory install under `/opt/pc3/share`
-and belong to root, so `mmedit` can read them there but not save them
+and belong to root, so `mmbedit` can read them there but not save them
 - it says so on its status line when it opens one. Copy them somewhere
 of your own first:
 
     cp -r /opt/pc3/share/examples ~/pc3
-    cd ~/pc3/samples && mmedit breakout.bas
+    cd ~/pc3/samples && mmbedit breakout.bas
 
 ## The window
 
@@ -125,7 +125,7 @@ miniaudio, so `PLAY SOUND`, `PLAY TONE` and the WAV, MP3, FLAC and MOD
 players work as they do on the board. Phase 4 is the programs around
 a program: the image loaders and `saveimage` (now reading rows, not
 pixels), sprites down their pipe, `SYSTEM`, gated by the image round
-trips. Phase 5 is the editor and the driver: `mmedit prog.bas` then F2
+trips. Phase 5 is the editor and the driver: `mmbedit prog.bas` then F2
 builds and runs, as the manual says, through a compiler you can name.
 Phase 7 is networking: the `WEB` family over the PC's sockets, TLS
 through mbedtls in `bcrun` itself, names resolved, `WEB CONNECT`

@@ -1,6 +1,6 @@
 # Phase 6 - Windows
 
-The same tree, built for Windows: `cc`, `bcrun`, `mmbc`, `mmedit`, the
+The same tree, built for Windows: `cc`, `bcrun`, `mmbc`, `mmbedit`, the
 loaders, the players and the device server, as 26 native `.exe` files
 that need nothing installed beside them. Every gate the Linux build has
 runs here and passes, including the whole 90-program translator corpus,
@@ -53,7 +53,7 @@ why `read`, `write` and `close` on a socket go through `sock_read`,
 
 **The console.** Raw mode is `ENABLE_VIRTUAL_TERMINAL_INPUT` with line
 input and echo off, so arrows and function keys arrive as the escape
-sequences a terminal sends and `mmedit` and `INKEY$` decode them
+sequences a terminal sends and `mmbedit` and `INKEY$` decode them
 unchanged; `VMIN` and `VTIME` decide what a read waits for, exactly as
 the line discipline would; `ICRNL` turns the Enter key's CR into NL.
 A console too old for virtual-terminal input falls back to the shim's
@@ -136,12 +136,21 @@ same framebuffer, the same expansion, the same file.
 
 ## What is not done
 
-* **`mmedit` has no automatic test here.** The console shim underneath
+* **`mmbedit` has no automatic test here.** The console shim underneath
   it is tested key by key, and the editor was driven by hand, but the
   pty harness the Linux gate uses has no Windows counterpart - a
   console-injection harness is the shape it would take.
-* **No installer.** The zip is the package: unpack it and run
-  `pc3.cmd`. An installer would want a signature, which is a decision
-  rather than a piece of work.
+* **Nothing is signed.** `install.cmd` puts the tools on the account's
+  PATH and registers `.bc`, both under HKEY_CURRENT_USER and both
+  undone by `uninstall.cmd`, but the programs carry no signature, so
+  SmartScreen asks about them and a machine under Smart App Control or
+  a Device Guard policy refuses them outright. A certificate is a
+  purchase and a decision, not a piece of work.
+* **A `.bc` will not run as a bare name.** `.\prog.bc` works in a
+  command prompt, a double click works in Explorer, and `bcrun prog.bc`
+  works anywhere; `prog` alone does not. `.BC` in `PATHEXT` looks like
+  the answer and is not - `cmd` finds the file and then tries to
+  `CreateProcess` it, which fails for anything that is not an
+  executable image. Tried, measured, and left out.
 * **The window is one size.** `--scale` works as on Linux; there is no
   full-screen mode on either.

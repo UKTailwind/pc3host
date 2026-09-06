@@ -2,7 +2,7 @@
 """The editor, driven through a pseudo-terminal the way a person drives
 it - the manual's own walkthrough, followed on a PC:
 
-    # mmedit prog.bas          F2
+    # mmbedit prog.bas          F2
     cc -r prog.bas
     ...
     hello from prog
@@ -10,12 +10,12 @@ it - the manual's own walkthrough, followed on a PC:
 Two runs.  The first opens an empty file, types a program and presses
 F1 (save and exit); the file must hold the line.  The second opens the
 saved file and presses F2 (save, exit, compile and run): the editor
-execs the compiler named by MMEDIT_CC with -r and the file, and the
+execs the compiler named by MMBEDIT_CC with -r and the file, and the
 program's output must appear on the same terminal.  F1 and F2 go as
 the sequences MMBasic's MMInkey takes, ESC O P and ESC O Q, which is
 what a real terminal sends for those keys.
 
-    mmedit_pty.py <mmedit> <cc> <work dir>
+    mmbedit_pty.py <mmbedit> <cc> <work dir>
 """
 import fcntl
 import os
@@ -80,10 +80,10 @@ def read_until(fd, p, needle, timeout):
 
 
 def main():
-    mmedit, cc, work = sys.argv[1:4]
+    mmbedit, cc, work = sys.argv[1:4]
     os.makedirs(work, exist_ok=True)
     prog = os.path.join(work, "hello.bas")
-    env = dict(os.environ, TERM="vt100", MMEDIT_CC=cc, PC3_DISPLAY="off")
+    env = dict(os.environ, TERM="vt100", MMBEDIT_CC=cc, PC3_DISPLAY="off")
     fails = 0
 
     def check(what, ok):
@@ -94,7 +94,7 @@ def main():
 
     # ---- F1: type a line, save and exit -------------------------------------
     open(prog, "w").close()
-    p, fd = spawn([mmedit, prog], env, work)
+    p, fd = spawn([mmbedit, prog], env, work)
     out, drawn = read_until(fd, p, LEGEND, 5)
     check("the editor drew its screen", drawn)
     # a comment first: on a PC the editor paints it BRIGHT yellow
@@ -105,7 +105,7 @@ def main():
     # two stray characters, then the two deleting keys as a PC terminal
     # sends them: Backspace is 0x7F and must delete BACKWARDS (the Y),
     # Delete is ESC [ 3 ~ and deletes forwards (the X, after a Left)
-    os.write(fd, b'Print "hello from mmedit"XY')
+    os.write(fd, b'Print "hello from mmbedit"XY')
     time.sleep(0.3)
     os.write(fd, b"\x7f")
     time.sleep(0.2)
@@ -119,28 +119,28 @@ def main():
     os.close(fd)
     check("F1 left the editor cleanly", rc == 0)
     text = open(prog, "rb").read()
-    check("the file holds the typed line", b'Print "hello from mmedit"' in text)
+    check("the file holds the typed line", b'Print "hello from mmbedit"' in text)
     last = text.replace(b"\r\n", b"\n").rstrip(b"\n").split(b"\n")[-1]
     check("Backspace deleted backwards and Delete forwards",
-          last == b'Print "hello from mmedit"')
+          last == b'Print "hello from mmbedit"')
     check("the comment was painted bright yellow", b"\x1b[93m" in out)
     check("no dim colours were emitted", b"\x1b[33m" not in out and b"\x1b[37m" not in out)
 
     # ---- F2: save, exit, compile and run -------------------------------------
-    p, fd = spawn([mmedit, prog], env, work)
+    p, fd = spawn([mmbedit, prog], env, work)
     out, drawn = read_until(fd, p, LEGEND, 5)
     check("the editor drew its screen again", drawn)
     os.write(fd, F2)
     # The line as the PROGRAM prints it starts a line of its own; the
     # editor's copy of the source shows it inside Print "...".  The tty
     # turns the runtime's \r\n into \r\r\n, so match up to the text.
-    out, ran = read_until(fd, p, b"\nhello from mmedit", 60)
+    out, ran = read_until(fd, p, b"\nhello from mmbedit", 60)
     rc = p.wait(timeout=10)
     os.close(fd)
     announced = out.find(b"cc -r ")
     check("F2 announced the compiler", announced >= 0)
     check("the program ran and printed on the terminal",
-          ran and out.find(b"\nhello from mmedit") > announced)
+          ran and out.find(b"\nhello from mmbedit") > announced)
     check("the compile-and-run exited 0", rc == 0)
     # ---- a file that cannot be saved where it is -----------------------------
     # The installed examples belong to root.  The editor says so on its
@@ -155,7 +155,7 @@ def main():
     if os.access(rofile, os.W_OK):
         print("skip  read-only checks (running as root)")
     else:
-        p, fd = spawn([mmedit, rofile], env, ro)
+        p, fd = spawn([mmbedit, rofile], env, ro)
         out, drawn = read_until(fd, p, b"READ ONLY", 5)
         check("a read-only file is announced on the status line", drawn)
         os.write(fd, b"' more")
@@ -177,7 +177,7 @@ def main():
 
     if fails:
         sys.stdout.write(out[-600:].decode("latin-1"))
-    print("mmedit_pty: " + ("FAILED" if fails else "all passed"))
+    print("mmbedit_pty: " + ("FAILED" if fails else "all passed"))
     return 1 if fails else 0
 
 
