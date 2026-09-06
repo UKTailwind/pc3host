@@ -133,6 +133,9 @@ target_link_libraries(ccbc PRIVATE pc3client)
 kit_tool(bcrun ${CC_DIR}/bcrun.c ${LIBS_DIR}/fnum.c)
 target_include_directories(bcrun PRIVATE ${MMB_DIR})
 target_compile_definitions(bcrun PRIVATE PC3_HOST MM_PC3 MM_HOSTED_ONLY)
+# The kit's -O1 is the passes' flag; the interpreter is the program's
+# speed on a PC, and -O2 (last flag wins) is worth having there.
+target_compile_options(bcrun PRIVATE -O2)
 target_link_libraries(bcrun PRIVATE pc3client pc3tls m)
 
 # The gates' bcrun: the display-less shape Makefile.host builds, which
@@ -145,6 +148,7 @@ target_link_libraries(bcrun PRIVATE pc3client pc3tls m)
 set(GATEBIN ${CMAKE_BINARY_DIR}/gatebin)
 kit_tool(bcrun-gate ${CC_DIR}/bcrun.c ${LIBS_DIR}/fnum.c)
 target_include_directories(bcrun-gate PRIVATE ${MMB_DIR})
+target_compile_options(bcrun-gate PRIVATE -O2)
 target_link_libraries(bcrun-gate PRIVATE m)
 set_target_properties(bcrun-gate PROPERTIES OUTPUT_NAME bcrun
                                             RUNTIME_OUTPUT_DIRECTORY ${GATEBIN})
@@ -281,6 +285,8 @@ add_executable(pc3d
     ${PLAT_DIR}/display.c ${PLAT_DIR}/fonts.c ${PLAT_DIR}/kbd_decode.c
     ${PLAT_DIR}/sound.c)
 target_compile_definitions(pc3d PRIVATE PC3_HOST PC3D_VERSION="${PC3_VERSION}")
+# the client asks a server its version and says when they differ
+target_compile_definitions(pc3client PRIVATE PC3_CLIENT_VERSION="${PC3_VERSION}")
 target_include_directories(pc3d PRIVATE server server/kstub proto ${PLAT_DIR}
                                         ext/minifb/include ext/miniaudio)
 target_compile_options(pc3d PRIVATE -O2 -g -Wall -Wextra -Wno-unused-parameter)
@@ -362,7 +368,10 @@ install(FILES tests/e2e/gfx1.bas tests/e2e/gfxc.c tests/e2e/keydemo.bas
               ${MMB_DIR}/tests/solar_eclipse.bas
               ${MMB_DIR}/tests/solar_eclipse.in
               ${MMB_DIR}/tests/solar_eclipse.expected
+              tests/bench/pc3bench.bas
         DESTINATION share/examples)
+# breakout with a stopwatch on its loop: for a machine where it is slow
+install(FILES tests/bench/breakout_timed.bas DESTINATION share/examples/samples)
 install(DIRECTORY ${MMB_DIR}/samples/ DESTINATION share/examples/samples
         FILES_MATCHING PATTERN "*.bas" PATTERN "*.md")
 # The whole MMBasic directory from the FUZIX tree - the translator in

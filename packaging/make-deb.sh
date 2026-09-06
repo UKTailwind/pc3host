@@ -46,6 +46,15 @@ ln -sf /opt/pc3/bin/cc "$S/usr/bin/pc3cc"
 
 SIZE=$(du -sk --exclude=DEBIAN "$S" | cut -f1)
 sed "s/@VERSION@/$VER/; s/@ARCH@/$ARCH/; s/@SIZE@/$SIZE/" "$R/packaging/control.in" > "$S/DEBIAN/control"
+# A running display server outlives the programs that use it, and so
+# outlives this upgrade: stop it, and the next program starts the new
+# one.  (The client also notices a server of another version and says.)
+cat > "$S/DEBIAN/postinst" <<'EOF'
+#!/bin/sh
+pkill -x pc3d 2>/dev/null || true
+exit 0
+EOF
+chmod 755 "$S/DEBIAN/postinst"
 ( cd "$S" && find . -type f ! -path './DEBIAN/*' -exec md5sum {} \; | sed 's| \./| |' ) > "$S/DEBIAN/md5sums"
 
 mkdir -p "$R/dist"

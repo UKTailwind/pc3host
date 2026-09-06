@@ -184,12 +184,54 @@ late; a window closed from the desktop stops the server the same way.
 cost. Typing into the real window with XTEST gives the e2e keys
 fixture's exact expected output through the new path.
 
-The remaining lever for a game like this is the crossing count itself:
-1,200 tile blits a frame are 1,200 round trips on a PC where they were
-1,200 microsecond ioctls on the board. A tile row composed program-side
-and sent as one rows transfer would be thirty crossings a frame, and
-faster on the board too; it is a change to the tilemap header, and
-waits for a board to verify it on.
+A closer look at the crossing count: the tilemap header already draws
+through a program-side window of six rows a transfer, so a full-screen
+`TILEMAP DRAW` is about 80 round trips, not 1,200, and most of its 6
+ms here is `bcrun` interpreting the tile composition. The game runs at
+8 ms a frame on this machine, headless or windowed, with the presenter
+or without; whatever made it crawl on the first user's desktop was not
+reproduced here, and the version handshake below is the first suspect.
+
+**The blanking wait was not waiting (found 2026-09-06).** The runtime
+waits for the top of blanking by asking `GFXIOC_VSYNCTRY` for up to 2
+ms at a time, 32 tries, and the kernel spends each budget waiting. The
+server answered 0 *at once* when the frame was further off than the
+budget, so the 32 tries were over in a millisecond and `FRAMEBUFFER
+COPY ,B` and `FRAMEBUFFER MERGE` never waited for anything: a copy with
+`,B` cost 1.3 ms where the board's costs a frame, and a game paced that
+way would have run far too fast. The server now keeps a deadline for
+the budget and answers 1 at the frame tick if it falls inside it, else
+0 when the budget has elapsed. `pc3bench.bas` shows the copy at 16.80
+ms, one frame.
+
+**Fewer crossings, a faster interpreter (2026-09-06).** The first
+user's report that the game became playable only with its ball speed
+raised from 0.4 to 3 says their frame took about seven times the
+board's, where this machine's takes a fraction of it. Two things a
+desktop does differently from this VM scale exactly with a frame: what
+a round trip costs (a socket ping-pong between two processes can cost
+hundreds of microseconds on a desktop whose cores sleep deeply between
+requests) and how fast `bcrun` interprets. So two levers, both host
+only: the driver builds a hosted program with a 16K row window
+(`-DMMB_WINB=16384`; the board keeps 1K, where a program has 48K and an
+ioctl costs a microsecond), so a full 320x240 screen is three
+transfers rather than forty and the game's tilemap draw goes from 80
+crossings a frame to 6; and `bcrun` is built `-O2` rather than the
+kit's `-O1`. Here the loop went from 7.5 to 4.8 ms a frame. On a
+machine where a crossing is dear the saving is the larger part.
+
+**A server outlives an upgrade.** The display server stays up after a
+program exits, as the board's picture does, so it survives a package
+upgrade and a new program talks to the old server without knowing.
+The client now asks the server its version once per process
+(`PC3_VERSION_REQ`) and says on stderr when the answer is not its own
+version, or when the server is too old to know the question; the
+package's `postinst` stops any running `pc3d` so the next program
+starts the new one. `tests/bench/pc3bench.bas` (installed under
+`share/examples`) reports what each kind of statement costs on the
+machine it runs on, and `samples/breakout_timed.bas` is the game with
+a stopwatch on each part of its loop - the two things to run on a
+machine where a program is slow.
 
 ## Building
 

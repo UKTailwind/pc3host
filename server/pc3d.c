@@ -477,6 +477,8 @@ static int serve(struct client *c)
 		key_flush();
 		return send_reply(c, 0, 0, NULL, 0);
 	}
+	if (rq.code == PC3_VERSION_REQ)
+		return send_reply(c, 0, 0, PC3D_VERSION, (uint32_t)strlen(PC3D_VERSION));
 
 	/* the display core is shared with the presenter's expansion */
 	pthread_mutex_lock(&pc3d_display_lock);
@@ -485,15 +487,16 @@ static int serve(struct client *c)
 	if (!headless && draws(rq.code))
 		presenter_mark_dirty();
 	if (r.defer) {
-		/* VSYNCTRY: is the next frame inside the budget?  If not,
-		 * the answer is 0 now; if so, 1 when it comes. */
-		if (c->vsync_wait == 2) {
-			long long left = next_tick - now_us();
-			if (left > (long long)r.ret) {
-				c->vsync_wait = 0;
-				return send_reply(c, 0, 0, NULL, 0);
-			}
-		}
+		/* VSYNCTRY: the kernel spends the budget waiting for the top
+		 * of blanking and answers 1 if it came, 0 when the budget is
+		 * gone.  So here: 1 at the frame tick if it falls inside the
+		 * budget, else 0 when the budget has elapsed - the loop below
+		 * keeps the deadline.  The first version answered 0 AT ONCE
+		 * when the frame was further off than the budget, so the
+		 * runtime's 32 tries were over in a millisecond and a copy
+		 * ",B" never waited for anything. */
+		if (c->vsync_wait == 2)
+			c->vsync_deadline = now_us() + (long long)r.ret;
 		return 0;
 	}
 	{
@@ -699,6 +702,15 @@ int main(int argc, char **argv)
 		 * than the frame's: 5 ms there, 2 here. */
 		if (waiting && left > 2000)
 			left = 2000;
+		/* and a VSYNCTRY's budget may run out before the frame */
+		for (i = 0; i < PC3D_MAX_CLIENTS; i++)
+			if (clients[i].fd >= 0 && clients[i].vsync_wait == 2) {
+				long long d = clients[i].vsync_deadline - now_us();
+				if (d < 0)
+					d = 0;
+				if (d < left)
+					left = d;
+			}
 		r = poll(pfd, (nfds_t)n, (int)((left + 999) / 1000));
 		if (r < 0 && errno != EINTR) {
 			perror("pc3d: poll");
@@ -734,6 +746,16 @@ int main(int argc, char **argv)
 					}
 					k++;
 				}
+			}
+		}
+		/* VSYNCTRY budgets that ran out before the frame: 0 */
+		for (i = 0; i < PC3D_MAX_CLIENTS; i++) {
+			struct client *c = &clients[i];
+			if (c->fd >= 0 && c->vsync_wait == 2 &&
+			    now_us() >= c->vsync_deadline && now_us() < next_tick) {
+				c->vsync_wait = 0;
+				if (send_reply(c, 0, 0, NULL, 0) < 0)
+					client_close(c);
 			}
 		}
 		/* the players sleeping on the ring: the kernel's

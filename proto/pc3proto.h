@@ -78,6 +78,12 @@ struct pc3_hello {
  * it: a MiniFB key code, pressed or released.  For tests and scripts
  * (tools/pc3key.c); the server treats it as it treats the window. */
 #define PC3_INJECT 0xFFFD
+
+/* What version is the server?  The reply's payload is its version
+ * string.  A server outlives the programs that use it and so outlives a
+ * package upgrade; the client asks once and says if the answer is not
+ * its own version - or if the server does not know the question. */
+#define PC3_VERSION_REQ 0xFFFC
 struct pc3_inject {
 	int32_t key;		/* MFB_KB_KEY_* */
 	int32_t pressed;	/* 1 down, 0 up */

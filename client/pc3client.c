@@ -165,6 +165,50 @@ static void start_server(void)
 	waitpid(pid, NULL, 0);		/* the middle process, at once */
 }
 
+static long exchange(int fd, uint16_t code, uint32_t arg,
+		     const void *p0, size_t n0, const void *p1, size_t n1,
+		     const void *p2, size_t n2, int *ret);
+static unsigned char *repbuf;
+
+/*
+ * The server outlives the programs that use it - the picture survives
+ * a program's exit, as on the board - so it outlives a package upgrade
+ * too, and a new program then talks to the old server without knowing.
+ * Once per process, ask the server its version and say if it is not
+ * this one's; an older server that does not know the question is told
+ * apart the same way.  Nothing else changes: the protocol is the same
+ * and the program goes on.
+ */
+#ifndef PC3_CLIENT_VERSION
+#define PC3_CLIENT_VERSION "?"
+#endif
+static void version_check(int fd)
+{
+	static int done;
+	int ret;
+	long n;
+	char got[64];
+
+	if (done)
+		return;
+	done = 1;
+	n = exchange(fd, PC3_VERSION_REQ, 0, NULL, 0, NULL, 0, NULL, 0, &ret);
+	if (n < 0 || ret < 0) {
+		fprintf(stderr, "pc3: the display server running is older than this "
+				"program (%s); stop it (pkill pc3d) and run again\n",
+			PC3_CLIENT_VERSION);
+		return;
+	}
+	if (n >= (long)sizeof got)
+		n = sizeof got - 1;
+	memcpy(got, repbuf, (size_t)n);
+	got[n] = 0;
+	if (strcmp(got, PC3_CLIENT_VERSION) != 0)
+		fprintf(stderr, "pc3: the display server running is %s, this program "
+				"is %s; stop it (pkill pc3d) and run again\n",
+			got, PC3_CLIENT_VERSION);
+}
+
 int pc3_sys_open(void)
 {
 	char path[4096];
@@ -218,6 +262,7 @@ int pc3_sys_open(void)
 	 * the runtime treats a failed ioctl as "no display". */
 	signal(SIGPIPE, SIG_IGN);
 	remember(fd);
+	version_check(fd);
 	return fd;
 }
 

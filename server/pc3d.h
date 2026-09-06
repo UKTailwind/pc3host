@@ -40,6 +40,7 @@ struct client {
 	int hello;			/* HELLO seen */
 	int mirror;			/* CONMIRROR: the display half is on */
 	int vsync_wait;			/* 0 none; 1 VSYNC; 2 VSYNCTRY */
+	long long vsync_deadline;	/* VSYNCTRY: answer 0 at this time if no frame first */
 	uint16_t tok;			/* the 16-bit owner id the sound core knows us by */
 	int pcm_wait;			/* SNDIOC_PCMWAIT outstanding, to pcm_mark */
 	uint32_t pcm_mark;

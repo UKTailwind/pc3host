@@ -64,6 +64,25 @@ of your own first:
     cp -r /opt/pc3/share/examples ~/pc3
     cd ~/pc3/samples && mmedit breakout.bas
 
+## If a program is slow
+
+The display server stays up after a program exits, so it survives a
+package upgrade too: after installing a new version, stop the old
+server (`pkill pc3d`) or log out and in, or the next program will
+still be talking to it. A program now says so if that happens.
+
+Every graphics statement on a PC is a round trip to the server; on the
+board it is a microsecond ioctl. `pc3bench.bas` reports what each kind
+of thing costs on the machine it runs on, with a reference column from
+a fast one:
+
+    pc3cc -r /opt/pc3/share/examples/pc3bench.bas
+
+and `samples/breakout_timed.bas` is the breakout game with a stopwatch
+on each part of its loop. `pc3d --verbose` prints, on exit, how many
+frames it presented and what each cost. Those three outputs say where
+the time goes.
+
 ## Where things stand
 
 Phase 0 built the tree and the gates and cut the first kernel seam.
