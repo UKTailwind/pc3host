@@ -49,10 +49,29 @@ opens a shell with `/opt/pc3/bin` first on the PATH, or runs one
 command that way.
 
 ```
-sudo dpkg -i dist/pc3host_0.2.0_amd64.deb
+sudo dpkg -i dist/pc3host_0.8.0_amd64.deb
 pc3                                   # a shell with the PC3 tools first
 cc -r /opt/pc3/share/examples/gfx1.bas
 ```
+
+## Windows
+
+The same tree cross-builds for Windows with MinGW-w64, so one Linux
+machine makes both packages:
+
+```
+apt install mingw-w64
+bash packaging/make-zip.sh            # dist/pc3host-<version>-win64.zip
+```
+
+Unpack the zip anywhere and run `pc3.cmd`: it opens a command prompt
+with the tools on the PATH. Nothing is installed and no runtime is
+needed - every program is linked statically. `selftest.cmd` compiles
+the eclipse predictor with the shipped compiler and checks its output
+to the last digit. The gates are in `tests/win` and travel with the
+package under `share\tests`. [PHASE6.md](PHASE6.md) is the account of
+what the platform made us change, and the shim itself is
+`hostshim/win32`.
 
 ## Editing the examples
 
@@ -110,9 +129,10 @@ trips. Phase 5 is the editor and the driver: `mmedit prog.bas` then F2
 builds and runs, as the manual says, through a compiler you can name.
 Phase 7 is networking: the `WEB` family over the PC's sockets, TLS
 through mbedtls in `bcrun` itself, names resolved, `WEB CONNECT`
-answered from the machine's own network. See [PHASE0.md](PHASE0.md),
-[PHASE1.md](PHASE1.md), [PHASE2.md](PHASE2.md), [PHASE3.md](PHASE3.md),
-[PHASE4.md](PHASE4.md), [PHASE5.md](PHASE5.md) and
-[PHASE7.md](PHASE7.md). Windows is phase 6 in the review, deferred
-until everything works under Linux; a PicoMite on a USB serial link for
-real I/O is phase 8.
+answered from the machine's own network. Phase 6 is Windows: the same
+tree built with MinGW over a POSIX shim, 26 native programs in a zip
+that needs nothing installed, and every gate green there too. See
+[PHASE0.md](PHASE0.md), [PHASE1.md](PHASE1.md), [PHASE2.md](PHASE2.md),
+[PHASE3.md](PHASE3.md), [PHASE4.md](PHASE4.md), [PHASE5.md](PHASE5.md),
+[PHASE6.md](PHASE6.md) and [PHASE7.md](PHASE7.md). A PicoMite on a USB
+serial link for real I/O is phase 8, and the only one left.
