@@ -1,4 +1,4 @@
-# pc3host 0.8.0 - the Pico Computer 3's BASIC, on a PC
+# pc3host - the Pico Computer 3's BASIC, on a PC
 
 Two packages, one for Linux and one for Windows. Both carry the same
 thing: the Pico Computer 3's own toolchain, built from the machine's own
@@ -11,18 +11,19 @@ kernel plays on the board. A program that runs here runs on the board,
 and it draws the same pixels: the graphics tests are compared against
 images captured from the machine itself.
 
-What is new in 0.8.0 is the Windows package. Until now this was Linux
-only.
+The Windows package is new in this line: until 0.8.0 this was Linux
+only. 0.8.1 fixes the first thing that package turned up - `TIME$` and
+`DATE$` gave UTC on a PC rather than the clock on your wall.
 
 | | |
 |---|---|
-| `pc3host_0.8.0_amd64.deb` | Debian, Ubuntu, Mint and their kin |
-| `pc3host-0.8.0-win64.zip` | Windows 10 or later, 64-bit |
+| `pc3host_0.8.1_amd64.deb` | Debian, Ubuntu, Mint and their kin |
+| `pc3host-0.8.1-win64.zip` | Windows 10 or later, 64-bit |
 
 ## Linux
 
 ```
-sudo dpkg -i pc3host_0.8.0_amd64.deb
+sudo dpkg -i pc3host_0.8.1_amd64.deb
 ```
 
 Everything but the display server is statically linked, so it installs
