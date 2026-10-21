@@ -175,6 +175,63 @@ def main():
     os.chmod(ro, 0o755)
     os.chmod(rofile, 0o644)
 
+    # ---- a paste: keys arriving during a redraw are kept -------------------
+    # The editor used to drop every key that arrived while it redrew the
+    # screen, to stop a held key running on; a paste lost everything after
+    # its first line or so.  Now they are dropped only when every one is a
+    # repeat of the key being handled (Editor.c's EdDropHeldRepeats, #51).
+    # 60 lines in one write is past the 40-row screen, so it scrolls too.
+    paste = os.path.join(work, "paste.bas")
+    open(paste, "w").close()
+    p, fd = spawn([mmbedit, paste], env, work)
+    read_until(fd, p, LEGEND, 5)
+    os.write(fd, b"".join(b"Print %d\r" % i for i in range(1, 61)))
+    time.sleep(2)
+    os.write(fd, F1)
+    read_until(fd, p, None, 5)
+    p.wait(timeout=5)
+    os.close(fd)
+    lines = open(paste, "rb").read().decode().split("\n")
+    check("a 60-line paste arrived whole",
+          all(("Print %d" % i) in lines for i in range(1, 61)))
+
+    # ---- the last line's ending is the file's, not a line of its own --------
+    # Loaded, it was an empty line below the program, and what was typed
+    # there was saved with no ending at all (#52).
+    one = os.path.join(work, "one.bas")
+    with open(one, "w") as f:
+        f.write("Print 1\n")
+    p, fd = spawn([mmbedit, one], env, work)
+    read_until(fd, p, LEGEND, 5)
+    os.write(fd, b"\x1b[B")             # Down: there is no line below now
+    time.sleep(0.3)
+    os.write(fd, b"X")
+    time.sleep(0.3)
+    os.write(fd, F1)
+    read_until(fd, p, None, 5)
+    p.wait(timeout=5)
+    os.close(fd)
+    text = open(one, "rb").read()
+    check("one line stays one line, ended", text.endswith(b"\n") and text.count(b"\n") == 1)
+
+    # ---- Esc leaves even with a line too long to save ------------------------
+    # The long-line refusal is for saving; Esc saves nothing, so it must not
+    # be refused (#50).  The file is unchanged, so Esc asks nothing.
+    longf = os.path.join(work, "long.bas")
+    with open(longf, "w") as f:
+        f.write("' " + "x" * 300 + "\n")
+    p, fd = spawn([mmbedit, longf], env, work)
+    read_until(fd, p, LEGEND, 5)
+    os.write(fd, b"\x1b")
+    out, _ = read_until(fd, p, None, 3)
+    try:
+        rc = p.wait(timeout=3)
+    except subprocess.TimeoutExpired:
+        p.kill()
+        rc = None
+    os.close(fd)
+    check("Esc leaves a file with a line over 255", rc == 0 and b"TOO LONG" not in out)
+
     if fails:
         sys.stdout.write(out[-600:].decode("latin-1"))
     print("mmbedit_pty: " + ("FAILED" if fails else "all passed"))
