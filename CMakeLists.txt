@@ -523,6 +523,10 @@ add_test(NAME images
 set_tests_properties(images PROPERTIES TIMEOUT 600 RESOURCE_LOCK symtmp LABELS e2e)
 add_test(NAME bmptest COMMAND sh ${PLAT_DIR}/bmptest.sh)
 set_tests_properties(bmptest PROPERTIES TIMEOUT 300 LABELS gates)
+# loadpng's inflate under AddressSanitizer: a legal stream with 15-bit
+# codes, and a back-reference before the start of the data.
+add_test(NAME pngtest COMMAND sh ${PLAT_DIR}/pngtest.sh)
+set_tests_properties(pngtest PROPERTIES TIMEOUT 300 LABELS gates)
 add_test(NAME corpus-display
     COMMAND ${CMAKE_COMMAND} -E env KNOWN=${CMAKE_SOURCE_DIR}/tests/sweep/corpus.known
             bash ${CMAKE_SOURCE_DIR}/tests/sweep/run-corpus.sh ${BIN} ${FUZIX_ROOT} ${GATE}/corpus)
