@@ -210,6 +210,31 @@ static void bbc_square(void)
 	sound_quiet();
 }
 
+/* An envelope with no pitch sections - PN1-3 all zero, the usual
+ * amplitude-only shape - and the auto-repeat bit clear used to restart
+ * its empty sections for ever inside the audio interrupt (PicoMite
+ * e8fbb78 found it in its copy of this synth).  A hang here is caught by
+ * sound_seam.sh's timeout. */
+static void bbc_amp_envelope(void)
+{
+	static const uint8_t env[14] = {
+		1, 1, 0, 0, 0, 0, 0, 0, 63, 0xFF, 0, 0xFB, 126, 100
+	};
+	int i, n, nonzero = 0;
+
+	sound_envelope(env);
+	check("SOUND 1,1,100,20 with an amplitude-only envelope queued", sound_cmd(1, 1, 100, 20) == 0);
+	fflush(stdout);
+	for (n = 0; n < (SND_RATE / 2) / SND_NBUF; n++) {
+		sound_fill_block(blk);
+		for (i = 0; i < SND_NBUF; i++)
+			if (blk[i * 2])
+				nonzero = 1;
+	}
+	check("an envelope with no pitch sections plays", nonzero);
+	sound_quiet();
+}
+
 int main(int argc, char **argv)
 {
 	if (argc < 2) {
@@ -218,6 +243,7 @@ int main(int argc, char **argv)
 	}
 	pcm_rules();
 	bbc_square();
+	bbc_amp_envelope();
 	mm_synth_wav(argv[1]);
 	printf("sound_seam: %s\n", fails ? "FAILED" : "all passed");
 	return fails ? 1 : 0;

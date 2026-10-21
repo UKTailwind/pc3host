@@ -15,7 +15,11 @@ mkdir -p "$W" || exit 1
 fail=0
 
 "$BIN/sndharness" "$W/ref.wav" 440 > /dev/null || { echo "FAIL  sndharness"; exit 1; }
-"$BIN/sound_seam" "$W" || fail=1
+rm -f "$W/mm.wav"
+timeout 20 "$BIN/sound_seam" "$W"
+rc=$?
+[ $rc -eq 124 ] && echo "FAIL  sound_seam hung: the synth never returned"
+[ $rc -ne 0 ] && fail=1
 
 SKIP=$((44 + 2048 * 4))
 LEN=$(( (220500 - 2048) * 4 ))
