@@ -556,14 +556,21 @@ add_test(NAME cgate
 add_test(NAME libgate
     COMMAND sh ${MMB_DIR}/libgate.sh
     WORKING_DIRECTORY ${MMB_DIR})
+# The translate-time refusals: programs the reference will not run at all
+# (a duplicate label), which both translators must refuse with the same
+# error - the programs cgate cannot compare, because they produce no C.
+add_test(NAME refuse
+    COMMAND ${CMAKE_COMMAND} -E env MMBC=${BIN}/mmbc W=${GATE}/refuse
+            bash ${MMB_DIR}/fcc/refusetests.sh
+    WORKING_DIRECTORY ${GATE}/refuse)
 # The gcc path: the reference runtime, built and checked by the tree's
 # own Makefile.  It builds into ${MMB_DIR}/build, as it always has.
 add_test(NAME gcc-check
     COMMAND make -s -C ${MMB_DIR} check)
 
-file(MAKE_DIRECTORY ${GATE}/fcc ${GATE}/fccm ${GATE}/cgate)
+file(MAKE_DIRECTORY ${GATE}/fcc ${GATE}/fccm ${GATE}/cgate ${GATE}/refuse)
 set_tests_properties(fcc-gate fcc-gate-mmbc cgate gcc-check PROPERTIES
     TIMEOUT 1800 RESOURCE_LOCK symtmp)
-set_tests_properties(fcc-gate fcc-gate-mmbc cgate gcc-check libgate PROPERTIES
-    LABELS gates)
+set_tests_properties(fcc-gate fcc-gate-mmbc cgate gcc-check libgate refuse
+    PROPERTIES LABELS gates)
 set_tests_properties(seam-display seam-sound PROPERTIES LABELS seam)
