@@ -105,7 +105,11 @@ set(PC3_CC_HEADERS ${CC_INCLUDES} ${MMB_INCLUDES}
 # -include unistd.h: the passes call write() and expect the Fuzix headers
 # to have declared it - a host-only concern, fixed here as it is there.
 set(KIT_FLAGS -g -O1 -Wall -Wno-unused-result -include unistd.h)
-set(KIT_DEFS  CPU_armm0 NO_FLOAT BIG_TABLES)
+# PC_TABLES: these passes are the PC's compiler, not a gate for the
+# board's, so none of the board's table sizes apply - and the type word
+# is 32 bits wide, so a program may have as many structs, arrays and
+# functions as it likes (FUZIX Applications/CC compiler.h, type.h).
+set(KIT_DEFS  CPU_armm0 NO_FLOAT BIG_TABLES PC_TABLES)
 
 function(kit_tool name)
     add_executable(${name} ${ARGN})
