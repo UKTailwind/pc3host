@@ -151,6 +151,16 @@ add_custom_command(TARGET ccbc POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E ${PC3_LINK_OR_COPY} $<TARGET_FILE:cc2> ${CCLAYOUT}/$<TARGET_FILE_NAME:cc2>
     COMMAND ${CMAKE_COMMAND} -E copy_if_different ${PC3_CC_HEADERS} ${CCLAYOUT}/include
     VERBATIM)
+# The headers again, on EVERY build: the copy above runs only when ccbc
+# is relinked, so a change to a header alone left lib/cc/include stale and
+# programs compiled against the old one - a static added there (mm_ixp)
+# came out as "no runtime function".  copy_if_different costs nothing
+# when nothing changed.
+add_custom_target(cc_headers ALL
+    COMMAND ${CMAKE_COMMAND} -E make_directory ${CCLAYOUT}/include
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different ${PC3_CC_HEADERS} ${CCLAYOUT}/include
+    VERBATIM)
+add_dependencies(ccbc cc_headers)
 
 # ---- the client library: /dev/sys on a PC ----------------------------------
 # What a program opens as /dev/sys and ioctls, this carries to pc3d over
