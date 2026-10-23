@@ -8,7 +8,7 @@ walkthrough followed on a PC. Dated 2026-09-05.
 ## What was already there
 
 Phase 2 did the paths when the package needed them: `ccbc` finds its
-passes and headers beside itself under `PC3_HOST`, `cc -r` runs the
+passes and headers beside itself under `PC_HOST`, `cc -r` runs the
 sibling `bcrun`, `mmbedit`'s F2 runs the sibling `cc`, and the object
 files the board builds from the same sources are byte-identical.
 `packaging/test-deb.sh` proves `cc -r` end to end from an installed
@@ -34,7 +34,7 @@ PicoMite is edited through, paints them bright, so the editor was
 designed to be seen in bright yellow, cyan and magenta on black. A PC's
 terminal emulators paint 30-37 as their dim set and keep the bright set
 for 90-97, the aixterm codes every one of them has honoured for twenty
-years. Under `PC3_HOST` the editor asks for 90-97 and looks as it looks
+years. Under `PC_HOST` the editor asks for 90-97 and looks as it looks
 on a PicoMite; the board's console keeps 30-37, whose rendering is its
 own palette's, and `editor.o` for the board is byte-identical. The pty
 harness checks that a typed comment is painted `ESC[93m` and that no
@@ -46,7 +46,7 @@ The same person found Backspace and Delete both deleting forwards. A
 PC terminal's Backspace key sends 0x7F, which MMBasic's editor takes as
 its DEL, the forward delete; the board's keyboard and TeraTerm send
 0x08 for Backspace and `ESC [ 3 ~` for Delete, and a PC's Delete key
-sends that sequence too. So under `PC3_HOST` a bare 0x7F is Backspace,
+sends that sequence too. So under `PC_HOST` a bare 0x7F is Backspace,
 the only key it can be. The board's `shim.o` is byte-identical, and the
 harness now types two stray characters and removes them with the two
 keys as a PC terminal sends them.

@@ -1,7 +1,7 @@
 /*
  * sound_seam.c - the kernel's sound core, compiled without the kernel.
  *
- * sound.c is built with -DPC3_HOST against the five hooks below, which
+ * sound.c is built with -DPC_HOST against the five hooks below, which
  * record rather than do, and driven the way misc.c drives it: the
  * ownership rules, the PCM ring, mono expansion, underrun counting, the
  * BBC square wave, and the MMBasic synth - whose 5 seconds of 440 Hz

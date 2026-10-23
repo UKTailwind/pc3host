@@ -63,12 +63,12 @@ doors are the calls they replaced:
   untouched; the pin path has no host.
 * `bcrun.c`: a bytecode program's `open` of `/dev/sys`, and `ioctl` and
   `close` on the descriptor it gets, go to the client library under
-  `PC3_HOST`. The pointer-bearing structures a 32-bit program hands over
+  `PC_HOST`. The pointer-bearing structures a 32-bit program hands over
   are rebuilt for the 64-bit host in `host_sys_ioctl`.
 * `utils/pc3sys.h`: the same door for the image programs (`loadjpg`,
   `loadpng`, `loadimage`, `saveimage`, the PNG arena client).
 
-`PC3_HOST` is the one define, shared with `display_priv.h`. The pc3host
+`PC_HOST` is the one define, shared with `display_priv.h`. The pc3host
 `bcrun` is built with it plus `MM_PC3` and `MM_HOSTED_ONLY`: the first
 is the board's own define and selects the runtime's real hardware paths
 (the gate build in `Makefile.host` leaves it off and gets the
@@ -85,7 +85,7 @@ Three things the board could never show, all fixed in the FUZIX tree:
    fill, so the first `SIN` would have called a null pointer. The guard
    on the table now matches the guard on the fill.
 2. **`mm_us_fast` read TIMER0.** The pixel queue's age bound was a load
-   from `0x400B0028`, which on a PC is a fault. Under `PC3_HOST` it is
+   from `0x400B0028`, which on a PC is a fault. Under `PC_HOST` it is
    the monotonic clock. This was the segmentation fault the first run
    produced.
 3. **Seven mirror structures and two colour arrays used `long`.** They

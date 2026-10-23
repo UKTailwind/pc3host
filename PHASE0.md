@@ -118,7 +118,7 @@ Same stores, same order, one function call between two of them.
 `disp_who_parent(who)` answers "a child of the framebuffer's owner draws
 where the owner draws". In the kernel it is the macro `(who)->p_pptr`,
 so the hot path (`display_fb_enter`, once per graphics ioctl) is
-byte-for-byte what it was. A host build defines `PC3_HOST` and supplies
+byte-for-byte what it was. A host build defines `PC_HOST` and supplies
 a function.
 
 ### Proof
@@ -135,7 +135,7 @@ Section sizes against the pre-split build:
 | data | 512 | 512 | 0 |
 | bss | 668,424 | 668,432 | +8: the pending-timing pointer |
 
-**The host.** `display_seam` compiles `display.c` with `-DPC3_HOST`
+**The host.** `display_seam` compiles `display.c` with `-DPC_HOST`
 and no kernel header, against stand-ins for everything the seam and
 `display.h` say the hardware provides, and walks the primitives: mode
 7's geometry and RGB121 colour indices, a pixel there and back, the

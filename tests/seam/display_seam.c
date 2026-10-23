@@ -10,7 +10,7 @@
  * checked against what the board's code must produce.
  *
  * Two things this proves, and one it does not.  It proves the seam is
- * clean: display.c compiles with -DPC3_HOST and no kernel header.  It
+ * clean: display.c compiles with -DPC_HOST and no kernel header.  It
  * proves the primitives behave the same on a 64-bit little-endian host
  * as the RGB121 palette, MSB-first 1bpp and high-nibble-left 4bpp
  * layouts say they should.  It does NOT prove the kernel still drives
@@ -300,7 +300,7 @@ int main(void)
     CHECK(display_gfx_getpixel(1, 0) == 0x000000, "console paper is the cell's bg");
 
     /* --- MODE 8: MMBasic's MODE 3, 640x480 in sixteen colours ----------
-     * A PC's only (PC3_HOST): the board's kernel has no SRAM for its
+     * A PC's only (PC_HOST): the board's kernel has no SRAM for its
      * 150K framebuffer.  MODE 7's colours, at twice the size. */
     r = display_gfx_mode(8);
     CHECK(r == 320 * 480, "mode 8 size %d", r);

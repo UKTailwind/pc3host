@@ -60,7 +60,7 @@ reads does not stall the display: the write is non-blocking and a full
 pipe drops, as a full ring drops.
 
 **One read primitive.** The runtime reads every key through `mm_rd1()`,
-and under `PC3_HOST` that is `pc3_rd1()` in the client library: a
+and under `PC_HOST` that is `pc3_rd1()` in the client library: a
 `poll()` over the terminal and the key channel, honouring the VMIN and
 VTIME the runtime set on the terminal so the escape-sequence wait still
 works, and raising `SIGINT` on a Ctrl-C from the window as the tty's
@@ -75,7 +75,7 @@ snapshot the kernel's dispatch takes.
 
 On the board the compiler is `/usr/bin/cc`, its passes are in
 `/usr/lib/cc`, and the runtime spawns `saveimage` by name. On a PC
-`/usr/bin/cc` belongs to the system's compiler. So under `PC3_HOST`:
+`/usr/bin/cc` belongs to the system's compiler. So under `PC_HOST`:
 
 * `bcrun` puts its own directory first on the PATH at startup, so the
   runtime's `execvp` of `saveimage`, `loadjpg` and the rest finds the
@@ -86,7 +86,7 @@ On the board the compiler is `/usr/bin/cc`, its passes are in
   the line it writes is `#!/usr/bin/env bcrun`.
 * `mmbedit`'s F2 runs the `cc` beside it.
 
-All of it is `#ifdef PC3_HOST` with the board's code in the `#else`.
+All of it is `#ifdef PC_HOST` with the board's code in the `#else`.
 The board's `bcrun.o`, `ccbc.o` and `mmbedit.o`, compiled from before
 and after with the tree's ARM flags and stripped of debug information,
 are byte-identical.
@@ -104,7 +104,7 @@ typed during one call was drained by the next, every time. The
 automated test never saw this because `pc3key` injects keys between the
 program's calls, not during them.
 
-The fix is in the runtime under `PC3_HOST`: the kernel's one-ioctl
+The fix is in the runtime under `PC_HOST`: the kernel's one-ioctl
 snapshot of the held-key table is kept for two milliseconds, so a burst
 of `KEYDOWN` calls costs one drain and one crossing, which is what it
 costs on the board, where a call is microseconds. Eight taps, eight
@@ -117,7 +117,7 @@ shown. The board's `mm_keydown` is untouched.
 compound literals and the Compiler Kit's without, and the board's
 `mmbc`, built with `MMBC_ARENA`, defaults to the second while the PC's
 build, the gates', defaults to the first. The driver ran it with no
-flag. Under `PC3_HOST` it now passes `--fcc`; the board's call is the
+flag. Under `PC_HOST` it now passes `--fcc`; the board's call is the
 `#else`. With that, every sample in the tree and the solar eclipse
 compile through `cc`, and the eclipse reproduces its expected output in
 73 ms. The build tree now carries `lib/cc/{cc0,cc1,cc2,include}` beside
@@ -200,7 +200,7 @@ directly for the tick clock and `mmb_gpio.h` writes the pin registers;
 on the board a program address is a machine address and that is right,
 on a PC it is unmapped memory. The gate script uses `-DMM_FCC`, under
 which those headers call the runtime's natives, and the host bcrun is
-that runtime. So under `PC3_HOST` the driver defines `MM_FCC`; the
+that runtime. So under `PC_HOST` the driver defines `MM_FCC`; the
 board's arm is the `#else` and its `ccbc.o` is byte-identical. The
 settick torture sample now passes all five phases on the host. The
 lesson generalises: anything a program-side header does *directly to

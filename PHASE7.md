@@ -145,7 +145,7 @@ statements the gate exercises.
 ## Board objects
 
 `bcrun.o`, `ccbc.o` and `mmbedit.o` for the board are byte-identical
-before and after: every `bcrun` and runtime change is under `PC3_HOST`
+before and after: every `bcrun` and runtime change is under `PC_HOST`
 or `__linux__`. The resolver fix is in a program-side header and reaches
 the board's programs when they are next compiled there.
 

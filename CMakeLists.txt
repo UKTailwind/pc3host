@@ -132,7 +132,7 @@ target_link_libraries(cc1 PRIVATE ${PC3_LIBM})		# it folds constants
 kit_tool(cc2 ${CC_DIR}/backend.c ${CC_DIR}/backend-bcode.c)
 kit_tool(bcdump ${CC_DIR}/bcdump.c)
 kit_tool(dumptokens ${CC_DIR}/dumptokens.c)
-# The cc driver, installed as `cc`.  Under PC3_HOST it finds the passes
+# The cc driver, installed as `cc`.  Under PC_HOST it finds the passes
 # and headers in ../lib/cc/ beside its own directory and cpp, mmbc and
 # bcrun beside itself, so the tree runs from build/ or from /opt/pc3
 # alike - /usr/lib/cc and /usr/bin are the board's places.
@@ -155,7 +155,7 @@ add_custom_command(TARGET ccbc POST_BUILD
 # ---- the client library: /dev/sys on a PC ----------------------------------
 # What a program opens as /dev/sys and ioctls, this carries to pc3d over
 # a socket.  bcrun (for the runtime and for bytecode programs) and the
-# image programs link it and are built with PC3_HOST, which is the one
+# image programs link it and are built with PC_HOST, which is the one
 # define the FUZIX sources know for "on a PC, talk to the server".
 add_library(pc3client STATIC client/pc3client.c)
 target_include_directories(pc3client PUBLIC client proto ${PLAT_DIR})
@@ -179,7 +179,7 @@ add_library(pc3tls STATIC client/pc3tls.c)
 target_include_directories(pc3tls PUBLIC client)
 target_compile_options(pc3tls PRIVATE -O2 -g -Wall -Wextra)
 target_link_libraries(pc3tls PUBLIC mbedtls_all ${PC3_SHIM})
-target_compile_definitions(ccbc PRIVATE PC3_HOST)
+target_compile_definitions(ccbc PRIVATE PC_HOST)
 target_link_libraries(ccbc PRIVATE pc3client)
 
 # bcrun carries the mm runtime natively: bcrun_mm.c #includes
@@ -189,10 +189,10 @@ target_link_libraries(ccbc PRIVATE pc3client)
 # paths (the gate build in Applications/CC/Makefile.host leaves it off
 # and gets the display-less runtime).  MM_HOSTED_ONLY says there is no
 # kernel behind those paths - keep the local maths table, do not ask
-# for the kernel's.  PC3_HOST routes /dev/sys to the server.
+# for the kernel's.  PC_HOST routes /dev/sys to the server.
 kit_tool(bcrun ${CC_DIR}/bcrun.c ${LIBS_DIR}/fnum.c)
 target_include_directories(bcrun PRIVATE ${MMB_DIR})
-target_compile_definitions(bcrun PRIVATE PC3_HOST MM_PC3 MM_HOSTED_ONLY)
+target_compile_definitions(bcrun PRIVATE PC_HOST MM_PC3 MM_HOSTED_ONLY)
 # The kit's -O1 is the passes' flag; the interpreter is the program's
 # speed on a PC, and -O2 (last flag wins) is worth having there.
 target_compile_options(bcrun PRIVATE -O2)
@@ -243,7 +243,7 @@ add_executable(mmbedit ${ED_DIR}/mmbedit.c ${ED_DIR}/shim.c
                       ${ED_DIR}/editor.c ${ED_DIR}/keywords.c)
 target_include_directories(mmbedit PRIVATE ${ED_DIR})
 target_compile_options(mmbedit PRIVATE -O0 -g)
-target_compile_definitions(mmbedit PRIVATE PC3_HOST)	# F2 runs the cc beside it
+target_compile_definitions(mmbedit PRIVATE PC_HOST)	# F2 runs the cc beside it
 target_link_libraries(mmbedit PRIVATE pc3client)
 
 # ---- the programs around a program: loaders and players ------------------
@@ -259,7 +259,7 @@ function(pc3_util name)
 endfunction()
 function(pc3_image name)
     pc3_util(${name} ${ARGN})
-    target_compile_definitions(${name} PRIVATE PC3_HOST)
+    target_compile_definitions(${name} PRIVATE PC_HOST)
     target_link_libraries(${name} PRIVATE pc3client)
 endfunction()
 
@@ -292,7 +292,7 @@ pc3_util(sndharness ${UTIL_DIR}/sndharness.c)
 # display_priv.h asks of the hardware and drives the primitives.  If
 # this stops compiling, the seam has been crossed in the kernel.
 add_executable(display_seam tests/seam/display_seam.c ${PLAT_DIR}/display.c)
-target_compile_definitions(display_seam PRIVATE PC3_HOST)
+target_compile_definitions(display_seam PRIVATE PC_HOST)
 target_include_directories(display_seam PRIVATE ${PLAT_DIR})
 target_compile_options(display_seam PRIVATE -g -Wall -Wextra -Wno-unused-parameter)
 target_link_libraries(display_seam PRIVATE ${PC3_SHIM})
@@ -356,7 +356,7 @@ add_executable(pc3d
     server/sndhw.c server/miniaudio.c server/presenter.c
     ${PLAT_DIR}/display.c ${PLAT_DIR}/fonts.c ${PLAT_DIR}/kbd_decode.c
     ${PLAT_DIR}/sound.c)
-target_compile_definitions(pc3d PRIVATE PC3_HOST PC3D_VERSION="${PC3_VERSION}")
+target_compile_definitions(pc3d PRIVATE PC_HOST PC3D_VERSION="${PC3_VERSION}")
 # the client asks a server its version and says when they differ
 target_compile_definitions(pc3client PRIVATE PC3_CLIENT_VERSION="${PC3_VERSION}")
 target_include_directories(pc3d PRIVATE server server/kstub proto ${PLAT_DIR}
@@ -374,7 +374,7 @@ set_target_properties(pc3d PROPERTIES LINKER_LANGUAGE CXX)
 # BBC square, and the MMBasic synth against sndharness sample for
 # sample (tests/seam/sound_seam.sh).
 add_executable(sound_seam tests/seam/sound_seam.c ${PLAT_DIR}/sound.c)
-target_compile_definitions(sound_seam PRIVATE PC3_HOST)
+target_compile_definitions(sound_seam PRIVATE PC_HOST)
 target_include_directories(sound_seam PRIVATE ${PLAT_DIR})
 target_compile_options(sound_seam PRIVATE -g -Wall -Wextra -Wno-unused-parameter)
 target_link_libraries(sound_seam PRIVATE ${PC3_SHIM})
