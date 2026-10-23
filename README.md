@@ -49,7 +49,7 @@ opens a shell with `/opt/pc3/bin` first on the PATH, or runs one
 command that way.
 
 ```
-sudo dpkg -i dist/pc3host_0.8.0_amd64.deb
+sudo dpkg -i dist/pc3host_0.9.0_amd64.deb
 pc3                                   # a shell with the PC3 tools first
 cc -r /opt/pc3/share/examples/gfx1.bas
 ```

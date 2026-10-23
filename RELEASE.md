@@ -11,19 +11,20 @@ kernel plays on the board. A program that runs here runs on the board,
 and it draws the same pixels: the graphics tests are compared against
 images captured from the machine itself.
 
-The Windows package is new in this line: until 0.8.0 this was Linux
-only. 0.8.1 fixes the first thing that package turned up - `TIME$` and
-`DATE$` gave UTC on a PC rather than the clock on your wall.
+Until 0.8.0 this was Linux only. 0.9.0 carries the toolchain of the
+board's own Fuzix release 0.29: the translator follows the PicoMite
+firmware through V7.00, the display server has the kernel's fixed
+sound engine, and `LOAD PNG` the fixed decoder.
 
 | | |
 |---|---|
-| `pc3host_0.8.1_amd64.deb` | Debian, Ubuntu, Mint and their kin |
-| `pc3host-0.8.1-win64.zip` | Windows 10 or later, 64-bit |
+| `pc3host_0.9.0_amd64.deb` | Debian, Ubuntu, Mint and their kin |
+| `pc3host-0.9.0-win64.zip` | Windows 10 or later, 64-bit |
 
 ## Linux
 
 ```
-sudo dpkg -i pc3host_0.8.1_amd64.deb
+sudo dpkg -i pc3host_0.9.0_amd64.deb
 ```
 
 Everything but the display server is statically linked, so it installs
