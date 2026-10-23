@@ -277,7 +277,7 @@ int main(void)
           disp_fb[255 * 80 + 79]);
     CHECK(display_gfx_getpixel(639, 255) == 0xFFFFFF, "1bpp read back");
     CHECK(display_gfx_remap(1, 0x00FF00) == -1, "no MAP in a two-colour mode");
-    CHECK(display_gfx_mode(6) == -1 && display_gfx_mode(8) == -1,
+    CHECK(display_gfx_mode(6) == -1 && display_gfx_mode(9) == -1,
           "modes we do not have");
 
     /* --- back to the console: drawable, with tile colours -------------- */
@@ -298,6 +298,26 @@ int main(void)
     CHECK(display_gfx_getpixel(0, 0) == 0xFF0000, "console ink is the cell's fg %06x",
           display_gfx_getpixel(0, 0));
     CHECK(display_gfx_getpixel(1, 0) == 0x000000, "console paper is the cell's bg");
+
+    /* --- MODE 8: MMBasic's MODE 3, 640x480 in sixteen colours ----------
+     * A PC's only (PC3_HOST): the board's kernel has no SRAM for its
+     * 150K framebuffer.  MODE 7's colours, at twice the size. */
+    r = display_gfx_mode(8);
+    CHECK(r == 320 * 480, "mode 8 size %d", r);
+    geom(&w, &h, &s, &bpp, &mode);
+    CHECK(w == 640 && h == 480 && s == 320 && bpp == 4 && mode == 8,
+          "mode 8 geometry %d x %d stride %d bpp %d mode %d", w, h, s, bpp, mode);
+    CHECK(last_rebuild == 0, "mode 8 shares the console's raster");
+    CHECK(handed == EXP_4BPP_X1, "mode 8 handover expander %d", (int)handed);
+    CHECK(display_gfx_map(0xFF0000) == 8 && display_gfx_map(0xFFFFFF) == 15,
+          "mode 8 takes MODE 7's RGB121 colours");
+    display_gfx_pixel(639, 479, 8);
+    CHECK(disp_fb[479 * 320 + 319] == 0x08, "mode 8 last pixel is the LOW "
+          "nibble of the last byte: %02x", disp_fb[479 * 320 + 319]);
+    CHECK(display_gfx_getpixel(639, 479) == 0xFF0000, "mode 8 read back %06x",
+          display_gfx_getpixel(639, 479));
+    CHECK(display_gfx_remap(1, 0x00FF00) == 0, "mode 8 has MAP");
+    display_gfx_mode(0xFF);
 
     if (fails) {
         printf("display seam: %d check(s) FAILED\n", fails);

@@ -70,6 +70,7 @@ static void raster_size(int *w, int *h)
 	switch (gfx_exp) {
 	case EXP_CONSOLE:
 	case EXP_4BPP_X2:
+	case EXP_4BPP_X1:
 		*w = 640; *h = 480;
 		break;
 	default:
@@ -80,7 +81,8 @@ static void raster_size(int *w, int *h)
 
 static int scale_now(void)
 {
-	return (gfx_exp == EXP_CONSOLE || gfx_exp == EXP_4BPP_X2) ? vga_scale : 1;
+	return (gfx_exp == EXP_CONSOLE || gfx_exp == EXP_4BPP_X2 ||
+		gfx_exp == EXP_4BPP_X1) ? vga_scale : 1;
 }
 
 void present_size(int *w, int *h)
@@ -206,6 +208,17 @@ static void expand_raster(uint32_t *out)
 				p[0] = p[1] = c1;
 				p[2] = p[3] = c2;
 				p += 4;
+			}
+		}
+		break;
+
+	case EXP_4BPP_X1:	/* MMBasic's MODE 3: 640x480, a nibble a pixel */
+		for (y = 0; y < 480; y++) {
+			const uint8_t *s = &disp_fb[y * 320];
+			uint32_t *p = out + y * 640;
+			for (x = 0; x < 320; x++) {
+				*p++ = argb[gfx_pal[s[x] >> 4]];
+				*p++ = argb[gfx_pal[s[x] & 15]];
 			}
 		}
 		break;
