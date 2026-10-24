@@ -10,10 +10,12 @@ D:\Dropbox\VSCode-STM32).
 ## 1. The programs
 
 The CMM2 plays seven PicoMite games, and 120 of the 147 graphics
-programs from TheBackShed thread 17161 ran there. pc3host today, from
-each game's untouched original (`cc`, then a 10 s headless run):
+programs from TheBackShed thread 17161 ran there. pc3host, from each
+game's untouched original (`cc`, then a 10 s headless run).
 
-| Game | pc3host now | What stops it |
+When this plan was written (24 Oct):
+
+| Game | pc3host then | What stopped it |
 |---|---|---|
 | Chuckie Egg | runs, title screen right | 14 `PLAY BBC SOUND/ENVELOPE` lines commented out |
 | Elite | translation fails | "unterminated do block" at 4276; `LIBRARY LOAD` of elite_lib.bas |
@@ -22,6 +24,21 @@ each game's untouched original (`cc`, then a 10 s headless run):
 | Picanoid | runs, then stops | `MM.VER` check; `PLAY BBC` x12; `DEVICE(MOUSE ...)`; `MM.INFO(PSRAM SIZE)`; `RESOLUTION` |
 | Picofrog | translation fails | `DefineFont 9` |
 | Prince of Pico | translation fails | the raw source: it needs its own `build.py`, and assets its setup fetches |
+
+After the first two batches of gaps (FUZIX 5da662e37 and 6a6ae2cb5):
+
+| Game | pc3host now | What stops it |
+|---|---|---|
+| Chuckie Egg | runs, no line left out | - |
+| Elite | translates (1 line out) and compiles | the first `Draw3D`; `MM.INFO(WRITEBUFF)` and `MEMORY COPY` on the framebuffer |
+| Exile | refused | the CSUB (deferred) |
+| PETSCII Robots (the CMM2's original) | runs, 11 lines out | `RUN`; `DEVICE(WII ...)` |
+| Picanoid | stops at once | `RESOLUTION`; 4 x `DEVICE(MOUSE ...)` |
+| Picofrog | runs, 10 lines out | `MM.INFO(PIN n)`, `MM.INFO(SYSTEM I2C)`, `RUN`, a `)` after `PIXEL`'s last argument (the firmware ignores what follows an argument) |
+| Prince of Pico | refused | needs its `build.py` output |
+
+Elite also needed the compiler fixed: its 35,241 lines of C passed the
+token stream's 15-bit line numbers (FUZIX 30c529d9d).
 
 The CMM2's copy of thread 17161's programs was never committed. It is
 to be extracted again from the 13 pages.
@@ -79,16 +96,18 @@ PC has the room.
 
 Both translators; the board gains these too.
 
-- `DefineFont #n` for any n the firmware takes. #9 replaces built-in
-  font 9, as on the PicoMite. Needed by robots and picofrog.
-- `PLAY BBC SOUND` and `PLAY BBC ENVELOPE`. The kernel's BBC synth is
-  already in pc3d and on the board.
-- `PEEK(VAR x, n)`, `MEMORY INPUT`, `MM.INFO(PSRAM SIZE)`,
-  `DEVICE(MOUSE ...)`, `RESOLUTION`, and the two TILEMAP forms Exile
-  uses.
-- `LIBRARY LOAD file, RAM`: the library's routines translated with the
-  program.
-- Elite's "unterminated do block", to investigate.
+- Done: `DefineFont #n` for 1-16 (#9 replaces built-in font 9, as on
+  the PicoMite); `PLAY BBC SOUND` and `ENVELOPE`; `PEEK(VAR x, n)`;
+  `MM.INFO(PSRAM SIZE)` and `LCDPANEL`; `LIBRARY LOAD` as the first
+  statement (Elite's "unterminated do block" was its missing library);
+  `a() = b()`; `MM.INFO(HEAP)`; `POKE DISPLAY VRES` at the mode's own
+  height; `dir` as a variable name.
+- Next: `RESOLUTION 640` (MODE 1 at the one resolution there is),
+  `MM.INFO(SYSTEM I2C)` ("I2C": the PC3's clock bus), `MM.INFO(PIN n)`,
+  `RUN`, the stray `)`, `DEVICE(MOUSE ...)`, `MEMORY INPUT`, and the
+  two TILEMAP forms Exile uses.
+- `Draw3D`, for Elite: the firmware's 3D engine, about 1,850 lines of
+  reference (catmap category 3 until now).
 - `MM.VER` answers the PicoMite version mmb2c follows, on the PC and
   on the board alike (decided 24 Oct). The Fuzix release stays in the
   boot banner.
