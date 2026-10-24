@@ -245,6 +245,9 @@ add_executable(mmbc
     ${MMB_DIR}/mmbc/mmbc_type.c ${MMB_DIR}/mmbc/mmbc_out.c
     ${MMB_DIR}/mmbc/mmbc_font.c)
 target_compile_options(mmbc PRIVATE -O2 -g -Wall -Wextra -Wno-unused-parameter)
+# PC_TABLES, as for the compiler kit above: the PC's translator, so the
+# board's pool sizes do not apply (mmbc_util.c)
+target_compile_definitions(mmbc PRIVATE PC_TABLES)
 target_link_libraries(mmbc PRIVATE ${PC3_SHIM} ${PC3_LIBM})
 
 # ---- mmbedit ------------------------------------------------------------------
