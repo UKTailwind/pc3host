@@ -1420,6 +1420,21 @@ int pc3w_unsetenv(const char *name)
 	return _putenv_s(name, "") ? -1 : 0;
 }
 
+int pc3w_diskspace(const char *path, unsigned long long *total,
+		   unsigned long long *avail, unsigned long long *nfree)
+{
+	ULARGE_INTEGER a, t, f;
+
+	if (!GetDiskFreeSpaceExA(path, &a, &t, &f)) {
+		errno = ENOENT;
+		return -1;
+	}
+	*total = t.QuadPart;
+	*avail = a.QuadPart;
+	*nfree = f.QuadPart;
+	return 0;
+}
+
 /* ---- at start ----------------------------------------------------------------- */
 
 /* Binary I/O whenever a descriptor is not the console: the compiler

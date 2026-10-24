@@ -101,5 +101,9 @@ void pc3w_alarm(unsigned sec, void (*fn)(int));	/* 0 cancels */
 const char *pc3w_tmpdir(void);
 int pc3w_setenv(const char *name, const char *value, int overwrite);
 int pc3w_unsetenv(const char *name);
+/* the drive holding path: its size, what this user may still write,
+ * and what is free in all - in bytes; the stand-in statvfs */
+int pc3w_diskspace(const char *path, unsigned long long *total,
+		   unsigned long long *avail, unsigned long long *nfree);
 
 #endif /* PC3W_H */
