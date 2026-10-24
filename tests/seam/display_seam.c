@@ -12,8 +12,10 @@
  * Two things this proves, and one it does not.  It proves the seam is
  * clean: display.c compiles with -DPC_HOST and no kernel header.  It
  * proves the primitives behave the same on a 64-bit little-endian host
- * as the RGB121 palette, MSB-first 1bpp and high-nibble-left 4bpp
- * layouts say they should.  It does NOT prove the kernel still drives
+ * as the RGB121 palette says they should, and that the bytes are the
+ * PicoMite's - bit 0 leftmost at 1bpp, the low nibble left at 4bpp -
+ * which a PC keeps for MM.INFO(WRITEBUFF) and the board does not
+ * (display_priv.h).  It does NOT prove the kernel still drives
  * the monitor - only the board can (REVIEW.md, section 6, phase 0).
  */
 
@@ -147,7 +149,7 @@ int main(void)
     CHECK(display_gfx_getpixel(10, 10) == 0xFF0000, "getpixel %06x",
           display_gfx_getpixel(10, 10));
     CHECK(display_gfx_getpixel(11, 10) == 0x000000, "neighbour untouched");
-    CHECK(disp_fb[10 * 160 + 5] == 0x80, "even x is the HIGH nibble: %02x",
+    CHECK(disp_fb[10 * 160 + 5] == 0x08, "even x is the LOW nibble: %02x",
           disp_fb[10 * 160 + 5]);
     CHECK(display_gfx_pixel(400, 10, 1) == 0, "off-screen pixel is not an error");
     CHECK(display_gfx_getpixel(400, 10) == -1, "off-screen read is -1");
@@ -184,8 +186,8 @@ int main(void)
             break;
     CHECK(i == 38400, "rect left byte %d as %02x", i, disp_fb[i]);
     CHECK(display_gfx_rect(0, 0, 319, 239, 0) == 0, "clear");
-    CHECK(display_gfx_rect(3, 0, 3, 0, 5) == 0 && disp_fb[1] == 0x05,
-          "odd-x single pixel is the LOW nibble: %02x", disp_fb[1]);
+    CHECK(display_gfx_rect(3, 0, 3, 0, 5) == 0 && disp_fb[1] == 0x50,
+          "odd-x single pixel is the HIGH nibble: %02x", disp_fb[1]);
 
     /* scroll: picture up by five */
     memset(disp_fb, 0, DISP_FB_POOL);
@@ -232,8 +234,8 @@ int main(void)
         CHECK(display_fb_open(&other, 1, DISP_FB_L) == -2, "second claimant refused");
         CHECK(display_fb_select(&me, DISP_FB_F) == 0, "write F");
         CHECK(display_fb_target() == disp_fb2, "primitives point at F");
-        display_gfx_pixel(3, 3, 15);            /* odd x: the low nibble */
-        CHECK(disp_fb2[3 * 160 + 1] == 0x0F && disp_fb[3 * 160 + 1] == 0,
+        display_gfx_pixel(3, 3, 15);            /* odd x: the high nibble */
+        CHECK(disp_fb2[3 * 160 + 1] == 0xF0 && disp_fb[3 * 160 + 1] == 0,
               "drawn into F, not the screen: F %02x screen %02x",
               disp_fb2[3 * 160 + 1], disp_fb[3 * 160 + 1]);
         display_fb_enter(&kid);
@@ -274,7 +276,7 @@ int main(void)
     CHECK(display_gfx_map(0x123456) == 1 && display_gfx_map(0) == 0,
           "1bpp: anything but black is ink");
     display_gfx_pixel(639, 255, 1);
-    CHECK(disp_fb[255 * 80 + 79] == 0x01, "MSB is the LEFTMOST pixel: %02x",
+    CHECK(disp_fb[255 * 80 + 79] == 0x80, "bit 0 is the LEFTMOST pixel: %02x",
           disp_fb[255 * 80 + 79]);
     CHECK(display_gfx_getpixel(639, 255) == 0xFFFFFF, "1bpp read back");
     CHECK(display_gfx_remap(1, 0x00FF00) == -1, "no MAP in a two-colour mode");
@@ -313,7 +315,7 @@ int main(void)
     CHECK(display_gfx_map(0xFF0000) == 8 && display_gfx_map(0xFFFFFF) == 15,
           "mode 8 takes MODE 7's RGB121 colours");
     display_gfx_pixel(639, 479, 8);
-    CHECK(disp_fb[479 * 320 + 319] == 0x08, "mode 8 last pixel is the LOW "
+    CHECK(disp_fb[479 * 320 + 319] == 0x80, "mode 8 last pixel is the HIGH "
           "nibble of the last byte: %02x", disp_fb[479 * 320 + 319]);
     CHECK(display_gfx_getpixel(639, 479) == 0xFF0000, "mode 8 read back %06x",
           display_gfx_getpixel(639, 479));

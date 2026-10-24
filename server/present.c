@@ -21,6 +21,9 @@
  * into 0x00RRGGBB with the same replication display_gfx_getpixel uses
  * (rgb332_to_888), so what PIXEL() reports and what the window shows
  * agree.
+ *
+ * A pixel's place in its byte is display_priv.h's PX4_* and PX1_* -
+ * the PicoMite's order on a PC, which is not the board's.
  */
 
 #include <stdio.h>
@@ -128,7 +131,7 @@ static void expand_5to8(const uint8_t *src, uint32_t *out)
 		uint8_t c[5];
 		for (i = 0; i < 5; i++) {
 			int b = bit + i;
-			c[i] = (src[b >> 3] & (0x80 >> (b & 7))) ? ink : paper;
+			c[i] = (src[b >> 3] & PX1_BIT(b)) ? ink : paper;
 		}
 		for (i = 0; i < 8; i++) {
 			uint8_t ca = c[cov[i][0]], cb = c[cov[i][1]];
@@ -192,8 +195,8 @@ static void expand_raster(uint32_t *out)
 				uint8_t v = d[x];
 				uint32_t f = argb[fc[x]], b = argb[bc[x]];
 				int k;
-				for (k = 7; k >= 0; k--)
-					*p++ = (v & (1 << k)) ? f : b;
+				for (k = 0; k < 8; k++)
+					*p++ = PX1_GET(v, k) ? f : b;
 			}
 		}
 		break;
@@ -203,8 +206,8 @@ static void expand_raster(uint32_t *out)
 			const uint8_t *s = &disp_fb[(y >> 1) * 160];
 			uint32_t *p = out + y * 640;
 			for (x = 0; x < 160; x++) {
-				uint32_t c1 = argb[gfx_pal[s[x] >> 4]];
-				uint32_t c2 = argb[gfx_pal[s[x] & 15]];
+				uint32_t c1 = argb[gfx_pal[PX4_EVEN_GET(s[x])]];
+				uint32_t c2 = argb[gfx_pal[PX4_ODD_GET(s[x])]];
 				p[0] = p[1] = c1;
 				p[2] = p[3] = c2;
 				p += 4;
@@ -217,8 +220,8 @@ static void expand_raster(uint32_t *out)
 			const uint8_t *s = &disp_fb[y * 320];
 			uint32_t *p = out + y * 640;
 			for (x = 0; x < 320; x++) {
-				*p++ = argb[gfx_pal[s[x] >> 4]];
-				*p++ = argb[gfx_pal[s[x] & 15]];
+				*p++ = argb[gfx_pal[PX4_EVEN_GET(s[x])]];
+				*p++ = argb[gfx_pal[PX4_ODD_GET(s[x])]];
 			}
 		}
 		break;
@@ -230,8 +233,8 @@ static void expand_raster(uint32_t *out)
 			memset(p, 0, 32 * sizeof *p);
 			p += 32;
 			for (x = 0; x < 160; x++) {
-				uint32_t c1 = argb[gfx_pal[s[x] >> 4]];
-				uint32_t c2 = argb[gfx_pal[s[x] & 15]];
+				uint32_t c1 = argb[gfx_pal[PX4_EVEN_GET(s[x])]];
+				uint32_t c2 = argb[gfx_pal[PX4_ODD_GET(s[x])]];
 				p[0] = p[1] = p[2] = c1;
 				p[3] = p[4] = p[5] = c2;
 				p += 6;
@@ -248,8 +251,8 @@ static void expand_raster(uint32_t *out)
 			memset(p, 0, 32 * sizeof *p);
 			p += 32;
 			for (x = 0; x < 80; x++) {
-				uint32_t c1 = argb[gfx_pal[s[x] >> 4]];
-				uint32_t c2 = argb[gfx_pal[s[x] & 15]];
+				uint32_t c1 = argb[gfx_pal[PX4_EVEN_GET(s[x])]];
+				uint32_t c2 = argb[gfx_pal[PX4_ODD_GET(s[x])]];
 				for (k = 0; k < 6; k++)
 					p[k] = c1;
 				for (k = 6; k < 12; k++)

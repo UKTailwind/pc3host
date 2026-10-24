@@ -77,6 +77,17 @@ else
 	check "gfx1 screen" "$W/gfx1.bmp" "$D/gfx1.golden.bmp"
 fi
 
+# ---- writebuff.bas: the framebuffer's bytes are a PicoMite's -----------------
+# PEEK, POKE and MEMORY COPY at MM.INFO(WRITEBUFF), in MODE 2 and MODE 1.
+# The golden is worked from the PicoMite's DrawPixel16 and DrawPixel2
+# (the program's header), not blessed from a run.
+if ! ( cd "$W" && BIN=$BIN W=$W MMB2C=$BIN/mmbc bash "$M/fcc/fccbuild.sh" "$D/writebuff.bas" ) > "$W/writebuff.build.log" 2>&1; then
+	echo "FAIL  writebuff (build)"; tail -5 "$W/writebuff.build.log"; fail=1
+else
+	( cd "$W" && "$BIN/bcrun" "$W/writebuff.bc" < /dev/null > "$W/writebuff.stdout" 2>&1 )
+	check "writebuff bytes" "$W/writebuff.out" "$D/writebuff.expected"
+fi
+
 # ---- gfxc.c: MODE 0 from C, through bcrun's libcalls --------------------------
 # The program includes pico_ioctl.h; fccbuild's include path has the
 # work directory in it, so the header goes there.

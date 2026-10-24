@@ -14,7 +14,7 @@ T=$1; P=$2; W=$3
 	echo "usage: e2e.sh <tree> <pc3host> <work>" >&2; exit 2; }
 D=$P/tests/e2e
 rm -rf "$W"; mkdir -p "$W"; cd "$W" || exit 1
-cp "$D"/gfx1.bas "$D"/gfxc.c "$D"/keys.bas "$D"/play.bas "$D"/*.expected "$D"/*.golden.bmp .
+cp "$D"/gfx1.bas "$D"/gfxc.c "$D"/keys.bas "$D"/play.bas "$D"/writebuff.bas "$D"/*.expected "$D"/*.golden.bmp .
 export PC3_SOCKET="$(cygpath -w "$TEMP")\\pc3-e2e.sock"
 export PC3_AUTOSTART=0
 rm -f "$TEMP/pc3-e2e.sock"
@@ -28,6 +28,9 @@ timeout 60 "$T/bin/bcrun.exe" gfx1.bc > gfx1.stdout 2>&1
 check "gfx1 readback" gfx1.out gfx1.expected
 timeout 60 "$T/bin/saveimage.exe" gfx1.bmp > /dev/null 2>&1 || { echo "FAIL  saveimage gfx1"; fail=1; }
 check "gfx1 screen" gfx1.bmp gfx1.golden.bmp
+"$T/bin/cc.exe" writebuff.bas > writebuff.cc 2>&1 || { echo "FAIL  cc writebuff"; cat writebuff.cc; fail=1; }
+timeout 60 "$T/bin/bcrun.exe" writebuff.bc < /dev/null > writebuff.stdout 2>&1
+check "writebuff bytes" writebuff.out writebuff.expected
 "$T/bin/cc.exe" gfxc.c > gfxc.cc 2>&1 || { echo "FAIL  cc gfxc"; cat gfxc.cc; fail=1; }
 timeout 60 "$T/bin/bcrun.exe" gfxc.bc > gfxc.out 2>&1
 check "gfxc output" gfxc.out gfxc.expected

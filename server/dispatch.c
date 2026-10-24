@@ -56,6 +56,34 @@ static void put(struct reply *r, const void *p, uint32_t n)
 	r->len = n;
 }
 
+/*
+ * A BLIT moves packed bytes between a program and the framebuffer, and a
+ * program sends and expects the board's order: the left pixel in the high
+ * nibble, or in the MSB.  The framebuffer here keeps the PicoMite's
+ * (display_priv.h), for MM.INFO(WRITEBUFF), so each byte turns as it
+ * crosses - its nibbles swap at 4bpp, its bits reverse at 1bpp.  A byte
+ * holds the same pixels in both orders, so the turn is the same both ways
+ * and nothing moves between bytes.  d may be s.
+ */
+static void blit_turn(unsigned char *d, const unsigned char *s, uint32_t n)
+{
+	uint16_t w, h, stride;
+	uint8_t bpp, mode;
+	uint32_t i;
+
+	display_gfx_geom(&w, &h, &stride, &bpp, &mode);
+	for (i = 0; i < n; i++) {
+		unsigned v = s[i];
+
+		v = ((v & 0xF0) >> 4) | ((v & 0x0F) << 4);
+		if (bpp == 1) {
+			v = ((v & 0xCC) >> 2) | ((v & 0x33) << 2);
+			v = ((v & 0xAA) >> 1) | ((v & 0x55) << 1);
+		}
+		d[i] = (unsigned char)v;
+	}
+}
+
 void pc3d_dispatch(struct client *c, uint16_t code, uint32_t arg,
 		   const unsigned char *pl, uint32_t len, struct reply *r)
 {
@@ -415,7 +443,7 @@ void pc3d_dispatch(struct client *c, uint16_t code, uint32_t arg,
 			return;
 		}
 		if (len < sizeof gb + gb.len) { fail(r, EFAULT); return; }
-		memcpy(display_fb_target() + gb.offset, pl + sizeof gb, gb.len);
+		blit_turn(display_fb_target() + gb.offset, pl + sizeof gb, gb.len);
 		ok(r, 0);
 		return;
 	}
@@ -431,6 +459,8 @@ void pc3d_dispatch(struct client *c, uint16_t code, uint32_t arg,
 			return;
 		}
 		put(r, display_fb_target() + gb.offset, gb.len);
+		if (r->owned)
+			blit_turn(r->owned, r->owned, gb.len);
 		ok(r, 0);
 		return;
 	}
@@ -459,14 +489,14 @@ void pc3d_dispatch(struct client *c, uint16_t code, uint32_t arg,
 		if (code == GFXIOC_BLITR) {
 			if (len < sizeof gr + n) { fail(r, EFAULT); return; }
 			for (row = 0; row < gr.rows; row++, t += gr.stride)
-				memcpy(t, pl + sizeof gr + row * gr.len, gr.len);
+				blit_turn(t, pl + sizeof gr + row * gr.len, gr.len);
 			ok(r, 0);
 			return;
 		} else {
 			unsigned char *m = malloc(n);
 			if (!m) { fail(r, ENOMEM); return; }
 			for (row = 0; row < gr.rows; row++, t += gr.stride)
-				memcpy(m + row * gr.len, t, gr.len);
+				blit_turn(m + row * gr.len, t, gr.len);
 			r->data = m;
 			r->owned = m;
 			r->len = n;
