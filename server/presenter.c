@@ -63,6 +63,14 @@ static size_t frame_cap;
 static int last_w, last_h;
 static char last_title[64];
 static unsigned long presents, present_us, pumps;
+static long long last_present;		/* now_us() of the last frame shown */
+
+/* An idle window is given its last frame again this often.  A frame put
+ * into a window the desktop has not shown yet is lost, and so is one a
+ * window loses when it is uncovered, and nothing else repaints it: Elite
+ * draws its title in its first second and then nothing for twenty, and
+ * the title stayed black, the picture sitting in the framebuffer. */
+#define REPAINT_US	250000
 
 static long long now_us(void)
 {
@@ -160,7 +168,16 @@ static void *run(void *arg)
 				break;
 			}
 			presents++;
-			present_us += (unsigned long)(now_us() - t0);
+			last_present = now_us();
+			present_us += (unsigned long)(last_present - t0);
+		} else if (last_w > 0 && now_us() - last_present > REPAINT_US) {
+			/* the frame already built, unchanged: nothing to work
+			 * out, only to hand the window again */
+			if (win_present(frame, last_w, last_h) < 0) {
+				pc3d_window_closed();
+				break;
+			}
+			last_present = now_us();
 		} else {
 			if (win_pump() < 0) {
 				pc3d_window_closed();
