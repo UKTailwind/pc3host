@@ -235,6 +235,47 @@ static void bbc_amp_envelope(void)
 	sound_quiet();
 }
 
+/* The loudest sample on each side over n blocks. */
+static void peaks(int n, int *pl, int *pr)
+{
+	int i, k;
+
+	*pl = *pr = 0;
+	for (i = 0; i < n; i++) {
+		sound_fill_block(blk);
+		for (k = 0; k < SND_NBUF; k++) {
+			int l = abs(blk[k * 2]), r = abs(blk[k * 2 + 1]);
+
+			if (l > *pl)
+				*pl = l;
+			if (r > *pr)
+				*pr = r;
+		}
+	}
+}
+
+/* PLAY VOLUME 30, 100 is a balance, the left quieter than the right, as
+ * Audio.c's vol_left and vol_right make it.  The synth used to keep one
+ * gain, the larger of the two, and played both sides at 100. */
+static void mm_balance(void)
+{
+	int l, r, el, er;
+
+	alive[1] = 1;
+	check("MMCMD VOLUME 30, 100 accepted",
+	      sound_mm_cmd(OP_VOLUME, 0, 0, 30, 100, 0, 1) == 0);
+	check("MMCMD TONE accepted",
+	      sound_mm_cmd(OP_TONE, 0, 0, 440000, 440000, -1, 1) == 0);
+	peaks(40, &l, &r);
+	sound_mm_cmd(OP_VOLUME, 0, 0, 70, 70, 0, 1);
+	peaks(40, &el, &er);
+	sound_mm_stop();
+	printf("      peaks: 30,100 gives %d / %d, 70,70 gives %d / %d\n",
+	       l, r, el, er);
+	check("VOLUME 30, 100: the left is the quieter", l > 0 && l * 10 < r * 6);
+	check("VOLUME 70, 70: the two sides match", el > 0 && el == er);
+}
+
 int main(int argc, char **argv)
 {
 	if (argc < 2) {
@@ -245,6 +286,7 @@ int main(int argc, char **argv)
 	bbc_square();
 	bbc_amp_envelope();
 	mm_synth_wav(argv[1]);
+	mm_balance();
 	printf("sound_seam: %s\n", fails ? "FAILED" : "all passed");
 	return fails ? 1 : 0;
 }
