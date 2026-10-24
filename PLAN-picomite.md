@@ -25,7 +25,7 @@ When this plan was written (24 Oct):
 | Picofrog | translation fails | `DefineFont 9` |
 | Prince of Pico | translation fails | the raw source: it needs its own `build.py`, and assets its setup fetches |
 
-After the first two batches of gaps (FUZIX 5da662e37 and 6a6ae2cb5):
+After three batches of gaps (FUZIX 5da662e37, 6a6ae2cb5, b5b0c41bf):
 
 | Game | pc3host now | What stops it |
 |---|---|---|
@@ -33,8 +33,8 @@ After the first two batches of gaps (FUZIX 5da662e37 and 6a6ae2cb5):
 | Elite | translates (1 line out) and compiles | the first `Draw3D`; `MM.INFO(WRITEBUFF)` and `MEMORY COPY` on the framebuffer |
 | Exile | refused | the CSUB (deferred) |
 | PETSCII Robots (the CMM2's original) | runs, 11 lines out | `RUN`; `DEVICE(WII ...)` |
-| Picanoid | stops at once | `RESOLUTION`; 4 x `DEVICE(MOUSE ...)` |
-| Picofrog | runs, 10 lines out | `MM.INFO(PIN n)`, `MM.INFO(SYSTEM I2C)`, `RUN`, a `)` after `PIXEL`'s last argument (the firmware ignores what follows an argument) |
+| Picanoid | runs, title screen right, 6 lines out | 4 x `DEVICE(MOUSE ...)` (and an IF block that loses its start with them) |
+| Picofrog | runs, title screen right, 1 line out | `RUN` |
 | Prince of Pico | refused | needs its `build.py` output |
 
 Elite also needed the compiler fixed: its 35,241 lines of C passed the
@@ -102,10 +102,14 @@ Both translators; the board gains these too.
   statement (Elite's "unterminated do block" was its missing library);
   `a() = b()`; `MM.INFO(HEAP)`; `POKE DISPLAY VRES` at the mode's own
   height; `dir` as a variable name.
-- Next: `RESOLUTION 640` (MODE 1 at the one resolution there is),
-  `MM.INFO(SYSTEM I2C)` ("I2C": the PC3's clock bus), `MM.INFO(PIN n)`,
-  `RUN`, the stray `)`, `DEVICE(MOUSE ...)`, `MEMORY INPUT`, and the
-  two TILEMAP forms Exile uses.
+- Done in the third batch: `RESOLUTION 640` (MODE 1 at the one
+  resolution there is), `MM.INFO$(SYSTEM I2C)` ("I2C", the clock's
+  bus), `MM.INFO(PIN n)` ("OFF" only where SETPIN would work, so
+  "Invalid" on a PC), and a stray `)` after a command's last argument.
+- Next: `RUN` (a restart in place: globals, files, LOCAL frames,
+  interrupts and sound reset, as do_run does), `DEVICE(MOUSE ...)` in
+  the window, `DEVICE(WII ...)`, `MEMORY INPUT`, and the two TILEMAP
+  forms Exile uses.
 - `Draw3D`, for Elite: the firmware's 3D engine, about 1,850 lines of
   reference (catmap category 3 until now).
 - `MM.VER` answers the PicoMite version mmb2c follows, on the PC and
