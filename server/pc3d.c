@@ -624,6 +624,8 @@ int main(int argc, char **argv)
 
 	crash_handlers();
 	sock_path[0] = 0;
+	if (getenv(PC3_VOLUME_ENV))
+		sndhw_set_volume(atoi(getenv(PC3_VOLUME_ENV)));
 	for (i = 1; i < argc; i++) {
 		if (!strcmp(argv[i], "--version")) {
 			printf("pc3d %s\n", PC3D_VERSION);
@@ -653,11 +655,14 @@ int main(int argc, char **argv)
 				fprintf(stderr, "pc3d: --audio auto|null\n");
 				return 2;
 			}
-		} else {
+		} else if (!strcmp(argv[i], "--volume") && i + 1 < argc)
+			sndhw_set_volume(atoi(argv[++i]));
+		else {
 			fprintf(stderr, "usage: pc3d [--headless] [--socket PATH] "
 					"[--scale 1-4] [--snapshot FILE.ppm] "
 					"[--keymap UK|US|DE|FR|ES|BE] [--keylog] "
-					"[--audio auto|null] [--verbose]\n");
+					"[--audio auto|null] [--volume 0-100] "
+					"[--verbose]\n");
 			return 2;
 		}
 	}
@@ -684,9 +689,9 @@ int main(int argc, char **argv)
 	signal(SIGPIPE, SIG_IGN);
 
 	if (pc3d_verbose)
-		fprintf(stderr, "pc3d %s: listening on %s%s, keyboard layout %s, audio %s\n",
+		fprintf(stderr, "pc3d %s: listening on %s%s, keyboard layout %s, audio %s at %d%%\n",
 			PC3D_VERSION, sock_path, headless ? " (headless)" : "",
-			keyboard_layout_name(), sndhw_backend());
+			keyboard_layout_name(), sndhw_backend(), sndhw_volume());
 
 	next_tick = now_us() + frame_period();
 	if (!headless) {

@@ -40,6 +40,9 @@
  * none listening; PC3D names the server binary to start. */
 #define PC3_AUTOSTART_ENV "PC3_AUTOSTART"
 #define PC3_SERVER_ENV    "PC3D"
+/* PC3_VOLUME=0-100 is the window's volume when pc3d starts, as
+ * --volume is; a server the client starts inherits it. */
+#define PC3_VOLUME_ENV    "PC3_VOLUME"
 
 struct pc3_req {
 	uint32_t len;		/* payload bytes that follow */

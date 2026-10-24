@@ -93,6 +93,14 @@ would. A server started by a program writes its messages to
 `pc3d.log` beside its socket (`$XDG_RUNTIME_DIR`, usually
 `/run/user/<uid>`).
 
+The window's sound starts at a quarter of full scale. A program's
+`PLAY` is full scale, as it is into a PicoMite's small speaker, and that
+is loud through a PC's. **Ctrl+Alt+Up** and **Ctrl+Alt+Down** turn it up
+and down in steps of 5, and the title bar shows the level for two
+seconds. A program's own `PLAY VOLUME` works within that level. To start
+at another level, set `PC3_VOLUME` (0 to 100) before the first program
+runs, or start the server yourself with `pc3d --volume N`.
+
 ## If a program is slow
 
 The display server stays up after a program exits, so it survives a

@@ -56,6 +56,14 @@ static unsigned stage_i, stage_n;
 static const char *backend = "none";
 static unsigned long blocks;
 
+/* The level the window plays at, over whatever a program asks for:
+ * miniaudio's master volume, 0-100.  It starts low.  A program's PLAY
+ * is full scale, which suits a PicoMite's small speaker, and full scale
+ * through a PC's speakers was loud enough that Elite's window was closed
+ * for the noise.  --volume or PC3_VOLUME sets it at start (pc3d.c), and
+ * Ctrl+Alt+Up and Down move it in the window (window.c). */
+static volatile int volume = PC3D_VOLUME;
+
 /* --- the hooks -------------------------------------------------------------------- */
 
 snd_lock_t snd_hw_lock(void)
@@ -201,6 +209,22 @@ unsigned long sndhw_blocks(void)
 	return blocks;
 }
 
+void sndhw_set_volume(int v)
+{
+	if (v < 0)
+		v = 0;
+	if (v > 100)
+		v = 100;
+	volume = v;
+	if (have_dev)
+		ma_device_set_master_volume(&dev, (float)v / 100.0f);
+}
+
+int sndhw_volume(void)
+{
+	return volume;
+}
+
 static int open_device(const ma_backend *which, int n)
 {
 	ma_device_config cfg;
@@ -223,6 +247,7 @@ static int open_device(const ma_backend *which, int n)
 		return -1;
 	}
 	have_dev = 1;
+	ma_device_set_master_volume(&dev, (float)volume / 100.0f);
 	if (ma_device_start(&dev) != MA_SUCCESS) {
 		ma_device_uninit(&dev);
 		ma_context_uninit(&ctx);

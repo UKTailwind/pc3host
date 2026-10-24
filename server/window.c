@@ -21,11 +21,29 @@ static int ww, wh;
 
 /* The keyboard: every press and release, and the character the host
  * made of it, handed to keyboard.c - which queues them until the pump
- * is over (see there for why). */
+ * is over (see there for why).
+ *
+ * But one pair is the window's own: Ctrl+Alt+Up and Ctrl+Alt+Down turn
+ * the volume up and down (sndhw.c), and the program never sees the
+ * arrow.  It does see Ctrl and Alt go down and up, which is harmless.
+ * Holding the pair repeats, as the desktop repeats any key. */
+static mfb_key vol_key;		/* the arrow of a volume pair, until it is let go */
+
 static void on_key(struct mfb_window *w, mfb_key key, mfb_key_mod mod, bool pressed)
 {
 	(void)w;
-	(void)mod;		/* the decoder tracks modifiers as keys */
+	if ((key == MFB_KB_KEY_UP || key == MFB_KB_KEY_DOWN) &&
+	    (pressed ? (mod & MFB_KB_MOD_CONTROL) && (mod & MFB_KB_MOD_ALT)
+		     : key == vol_key)) {
+		if (pressed) {
+			sndhw_set_volume(sndhw_volume() + (key == MFB_KB_KEY_UP
+					 ? PC3D_VOLUME_STEP : -PC3D_VOLUME_STEP));
+			presenter_show_volume();
+			vol_key = key;
+		} else
+			vol_key = (mfb_key)0;
+		return;
+	}
 	keyboard_event((int)key, pressed ? 1 : 0);
 }
 

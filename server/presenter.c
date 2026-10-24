@@ -72,6 +72,10 @@ static long long last_present;		/* now_us() of the last frame shown */
  * the title stayed black, the picture sitting in the framebuffer. */
 #define REPAINT_US	250000
 
+/* After Ctrl+Alt+Up or Down the title says the volume, for this long. */
+#define VOLUME_SHOWN_US	2000000
+static long long volume_until;		/* now_us() it stops; 0 = not shown */
+
 static long long now_us(void)
 {
 	struct timespec ts;
@@ -96,6 +100,13 @@ static int frame_fit(int *w, int *h)
 
 void presenter_mark_dirty(void)
 {
+	dirty = 1;
+}
+
+/* From window.c's key callback, which runs on this thread. */
+void presenter_show_volume(void)
+{
+	volume_until = now_us() + VOLUME_SHOWN_US;
 	dirty = 1;
 }
 
@@ -132,6 +143,10 @@ static void *run(void *arg)
 		if (st)
 			break;
 
+		if (volume_until && now_us() >= volume_until) {
+			volume_until = 0;	/* back to the plain title */
+			dirty = 1;
+		}
 		if (dirty) {
 			int w, h;
 			char title[64];
@@ -144,7 +159,11 @@ static void *run(void *arg)
 				continue;
 			}
 			present_frame(frame);
-			snprintf(title, sizeof title, "%s", present_mode_name());
+			if (volume_until)
+				snprintf(title, sizeof title, "%s - volume %d%%",
+					 present_mode_name(), sndhw_volume());
+			else
+				snprintf(title, sizeof title, "%s", present_mode_name());
 			pthread_mutex_unlock(&pc3d_display_lock);
 
 			if (w != last_w || h != last_h) {

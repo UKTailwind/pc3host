@@ -91,6 +91,7 @@ int  presenter_start(int wake_write_fd);
 void presenter_stop(void);
 void presenter_wake(void);
 void presenter_mark_dirty(void);
+void presenter_show_volume(void);	/* the title says the volume for a while (presenter thread) */
 unsigned long presenter_stats(unsigned long *us, unsigned long *idle_pumps);
 /* pc3d.c: the window went away - stop, and wake the loop to notice */
 void pc3d_window_closed(void);
@@ -128,6 +129,12 @@ void sndhw_lock(void);				/* around every call into sound.c */
 void sndhw_unlock(void);
 int  sndhw_pcm_ready(uint16_t tok, uint32_t mark);	/* PCMWAIT can be answered */
 void sndhw_client_gone(uint16_t tok);
+/* The window's volume, 0-100, over whatever a program plays at: set
+ * before sndhw_init or at any time after, from any thread. */
+#define PC3D_VOLUME	25			/* where it starts: low */
+#define PC3D_VOLUME_STEP 5			/* Ctrl+Alt+Up / Down in the window */
+void sndhw_set_volume(int v);			/* clamped to 0-100 */
+int  sndhw_volume(void);
 /* pc3d.c: the token table */
 int  pc3d_tok_alive(uint16_t tok);
 int  pc3d_tok_pid(uint16_t tok);
