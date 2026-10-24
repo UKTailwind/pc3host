@@ -24,7 +24,7 @@ struct p_tab {
 };
 
 #define PC3D_MAX_CLIENTS 32
-#define PC3D_UFONTS 7			/* fonts 10-16, as fonts.c */
+#define PC3D_UFONTS 16			/* fonts 1-16, as fonts.c */
 
 #ifndef PC3D_VERSION
 #define PC3D_VERSION "0.2.0"

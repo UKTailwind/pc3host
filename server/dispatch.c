@@ -380,7 +380,7 @@ void pc3d_dispatch(struct client *c, uint16_t code, uint32_t arg,
 		}
 		need = 4u + (uint32_t)hdr[3] * ((uint32_t)hdr[0] * (uint32_t)hdr[1] / 8u);
 		if (fd.bytes < need) { fail(r, EINVAL); return; }
-		if (fd.font < 10 || fd.font > 16) { fail(r, EINVAL); return; }
+		if (fd.font < 1 || fd.font > 16) { fail(r, EINVAL); return; }
 		copy = malloc(fd.bytes);
 		if (!copy) { fail(r, ENOMEM); return; }
 		memcpy(copy, hdr, fd.bytes);
@@ -389,7 +389,7 @@ void pc3d_dispatch(struct client *c, uint16_t code, uint32_t arg,
 			fail(r, EINVAL);
 			return;
 		}
-		slot = fd.font - 10;
+		slot = fd.font - 1;
 		free(c->ufont[slot]);
 		c->ufont[slot] = copy;
 		ok(r, 0);
