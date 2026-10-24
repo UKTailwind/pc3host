@@ -26,6 +26,12 @@ unset PC3_DISPLAY
 
 TESTS="imgtrip imgloop wtest rtest imgm1 imgm1b imgm1c imgm1d saveimg"
 
+# The round trips: every picture each of these leaves must be the same
+# file, as each test's own comment says.  The goldens were once blessed
+# with LOAD IMAGE sending eight-byte colours on a PC, every reloaded
+# picture wrong, so this is checked before a bless as well.
+ROUNDTRIP="imgtrip imgloop imgm1 imgm1b imgm1c imgm1d"
+
 fail=0
 die() { echo "images: $*" >&2; exit 1; }
 
@@ -55,6 +61,14 @@ for t in $TESTS; do
 	# an `ls -l` line (saveimg.bas) carries a date and an owner: keep
 	# the size and the name
 	tr -d '\r' < "$W/$t.raw" | sed -E 's/^-[rwxsStT-]{9}[ ]+[0-9]+[ ]+[^ ]+[ ]+[^ ]+[ ]+([0-9]+)[ ]+[A-Za-z]+[ ]+[0-9]+[ ]+[0-9:]+[ ]+(.*)$/\1 \2/' > "$W/$t.out"
+	case " $ROUNDTRIP " in *" $t "*)
+		if [ "$(sed -n 's/^bmp: \([0-9]*\) .*/\1/p' "$W/$t.out" | sort -u | wc -l)" != 1 ]; then
+			echo "FAIL  $t: the round trip changed the picture"
+			grep '^bmp:' "$W/$t.out"
+			fail=1
+			continue
+		fi
+	esac
 	if [ -n "$BLESS" ]; then
 		cp "$W/$t.out" "$D/$t.expected" && echo "blessed $t"
 	elif cmp -s "$W/$t.out" "$D/$t.expected"; then

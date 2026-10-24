@@ -28,6 +28,14 @@
 struct iovec;
 struct pollfd;
 
+/* ---- shared memory ---------------------------------------------------- */
+/* A named block, which pc3d makes for its framebuffers and a program
+ * maps for MM.INFO(WRITEBUFF): POSIX's shm_open and mmap of it.  Mapped
+ * at `at', below 4G, or not at all - a program address is 32 bits.
+ * NULL when it cannot be. */
+void *pc3w_shm_make(const char *name, size_t len);
+void *pc3w_shm_map(const char *name, size_t len, void *at);
+
 /* ---- sockets --------------------------------------------------------- */
 #define PC3W_SOCK_BASE 0x4000
 #define PC3W_SOCK_MAX  256

@@ -28,9 +28,10 @@
 
 /* --- what the kernel would have supplied ---------------------------------- */
 
-uint8_t disp_fb[DISP_FB_POOL] __attribute__((aligned(4)));
-uint8_t disp_fb2[DISP_FB_POOL] __attribute__((aligned(4)));
-uint8_t disp_fb3[DISP_FB_POOL] __attribute__((aligned(4)));
+/* display.h's three buffers, N then F then L, as pc3d's disphw.c
+ * makes them - here plain memory */
+static uint8_t fbs[3 * DISP_FB_POOL] __attribute__((aligned(4)));
+uint8_t *disp_fbs = fbs;
 
 int display_fb2_ok(void) { return 1; }
 int display_fb3_ok(void) { return 1; }
@@ -187,13 +188,13 @@ int main(void)
           "odd-x single pixel is the LOW nibble: %02x", disp_fb[1]);
 
     /* scroll: picture up by five */
-    memset(disp_fb, 0, sizeof disp_fb);
+    memset(disp_fb, 0, DISP_FB_POOL);
     display_gfx_pixel(5, 5, 15);
     CHECK(display_gfx_scroll(5, 0) == 0, "scroll");
     CHECK(display_gfx_getpixel(5, 0) == 0xFFFFFF && display_gfx_getpixel(5, 5) == 0,
           "scrolled pixel");
     /* two-axis with wrap */
-    memset(disp_fb, 0, sizeof disp_fb);
+    memset(disp_fb, 0, DISP_FB_POOL);
     display_gfx_pixel(0, 0, 15);
     CHECK(display_gfx_scroll2(1, 0, -2) == 0, "scroll2");
     CHECK(display_gfx_getpixel(1, 0) == 0xFFFFFF, "scroll2 moved right");
@@ -203,7 +204,7 @@ int main(void)
     /* MAP: pending until SET, then live.  Index 1 is RGB121 blue; index
      * 3 would be blue with the low green bit, 0x0048FF, which is the
      * kind of arithmetic this test exists to pin down. */
-    memset(disp_fb, 0, sizeof disp_fb);
+    memset(disp_fb, 0, DISP_FB_POOL);
     display_gfx_pixel(9, 9, 3);
     CHECK(display_gfx_getpixel(9, 9) == 0x0048FF, "index 3 is %06x",
           display_gfx_getpixel(9, 9));
@@ -223,9 +224,9 @@ int main(void)
     {
         struct p_tab me = { NULL }, kid = { &me }, other = { NULL };
 
-        memset(disp_fb, 0, sizeof disp_fb);
-        memset(disp_fb2, 0, sizeof disp_fb2);
-        memset(disp_fb3, 0, sizeof disp_fb3);
+        memset(disp_fb, 0, DISP_FB_POOL);
+        memset(disp_fb2, 0, DISP_FB_POOL);
+        memset(disp_fb3, 0, DISP_FB_POOL);
         display_fb_enter(&me);
         CHECK(display_fb_open(&me, 1, DISP_FB_F) == 0, "create F");
         CHECK(display_fb_open(&other, 1, DISP_FB_L) == -2, "second claimant refused");
@@ -250,7 +251,7 @@ int main(void)
         CHECK(display_fb_select(&me, DISP_FB_L) == 0, "write L");
         display_gfx_pixel(7, 7, 6);
         CHECK(display_fb_select(&me, DISP_FB_N) == 0, "screen");
-        memset(disp_fb, 0, sizeof disp_fb);
+        memset(disp_fb, 0, DISP_FB_POOL);
         CHECK(display_fb_merge(&me, 0) == 0, "merge");
         CHECK(display_gfx_getpixel(3, 3) == 0xFFFFFF, "F came through");
         CHECK(display_gfx_getpixel(7, 7) == 0x00FF00, "layer on top %06x",

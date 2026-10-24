@@ -70,6 +70,8 @@ void pc3d_client_gone(struct client *c);
 
 /* disphw.c: the hooks display_priv.h asks for, and the framebuffers */
 void disphw_init(void);
+const char *disphw_fb_name(void);	/* the framebuffers' shared block */
+void disphw_fb_done(void);
 int  disphw_raster(void);		/* DISP_RASTER_VGA / XGA now */
 
 /* present.c: the framebuffer as the monitor would show it */

@@ -1335,6 +1335,35 @@ const char *pc3w_hostpath(const char *path)
 	return path;
 }
 
+/* The framebuffers' block (pc3w.h).  The handle that made it stays open
+ * for the server's life; the object lives while any handle or view on
+ * it does, so it goes with the last program to have it mapped. */
+void *pc3w_shm_make(const char *name, size_t len)
+{
+	HANDLE h = CreateFileMappingA(INVALID_HANDLE_VALUE, NULL, PAGE_READWRITE,
+				      0, (DWORD)len, name);
+
+	if (h == NULL)
+		return NULL;
+	return MapViewOfFile(h, FILE_MAP_ALL_ACCESS, 0, 0, len);
+}
+
+void *pc3w_shm_map(const char *name, size_t len, void *at)
+{
+	HANDLE h = OpenFileMappingA(FILE_MAP_ALL_ACCESS, FALSE, name);
+	void *p;
+
+	if (h == NULL)
+		return NULL;
+	p = MapViewOfFileEx(h, FILE_MAP_ALL_ACCESS, 0, 0, len, at);
+	CloseHandle(h);			/* the view keeps the object */
+	if (p != NULL && (uintptr_t)p > 0xFFFFFFFFu - len) {
+		UnmapViewOfFile(p);
+		p = NULL;
+	}
+	return p;
+}
+
 int pc3w_exe_dir(char *buf, size_t n)
 {
 	DWORD k = GetModuleFileNameA(NULL, buf, (DWORD)n);

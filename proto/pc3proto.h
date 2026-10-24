@@ -84,6 +84,16 @@ struct pc3_hello {
  * package upgrade; the client asks once and says if the answer is not
  * its own version - or if the server does not know the question. */
 #define PC3_VERSION_REQ 0xFFFC
+
+/* The framebuffers' shared-memory object: its name, and the size of each
+ * of the three buffers it holds, N then F then L.  The client maps it
+ * for MM.INFO(WRITEBUFF) (pc3_fb_map).  An empty name: there is none,
+ * and the buffers are the server's private memory. */
+#define PC3_FBSHM 0xFFFB
+struct pc3_fbshm {
+	uint32_t pool;		/* bytes in each buffer */
+	char name[60];		/* "/pc3fb-<pid>", or "Local\\pc3fb-<pid>" */
+};
 struct pc3_inject {
 	int32_t key;		/* MFB_KB_KEY_* */
 	int32_t pressed;	/* 1 down, 0 up */

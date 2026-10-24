@@ -497,6 +497,52 @@ static int roundtrip(int fd, uint16_t code, const void *in, size_t nin,
 	return ret;
 }
 
+/* --- the framebuffers, in the program (MM.INFO(WRITEBUFF)) ------------------- */
+
+/* Below 4G - a program address is 32 bits - and clear of bcrun's program
+ * memory (0x30000000) and its heap (0x40000000). */
+#define PC3_FB_MAPAT	0x50000000UL
+
+/* Map the server's three framebuffers, N then F then L, and return where
+ * they are, with the size of each in *pool.  0 if the server has no
+ * shared block, or it cannot be had below 4G. */
+unsigned long pc3_fb_map(int fd, unsigned long *pool)
+{
+	struct pc3_fbshm fs;
+	size_t n;
+	void *p;
+
+	if (roundtrip(fd, PC3_FBSHM, NULL, 0, &fs, sizeof fs) < 0)
+		return 0;
+	fs.name[sizeof fs.name - 1] = 0;
+	if (fs.name[0] == 0 || fs.pool == 0)
+		return 0;
+	n = 3 * (size_t)fs.pool;
+#ifdef _WIN32
+	p = pc3w_shm_map(fs.name, n, (void *)PC3_FB_MAPAT);
+	if (p == NULL)
+		return 0;
+#else
+	{
+		int sfd = shm_open(fs.name, O_RDWR, 0);
+
+		if (sfd < 0)
+			return 0;
+		p = mmap((void *)PC3_FB_MAPAT, n, PROT_READ | PROT_WRITE,
+			 MAP_SHARED, sfd, 0);
+		close(sfd);
+		if (p == MAP_FAILED)
+			return 0;
+		if ((uintptr_t)p > 0xFFFFFFFFUL - n) {
+			munmap(p, n);
+			return 0;
+		}
+	}
+#endif
+	*pool = fs.pool;
+	return (unsigned long)(uintptr_t)p;
+}
+
 /* --- the local families ------------------------------------------------------ */
 
 /* Memory a program may hold as a 32-bit base: mapped below 4G. */

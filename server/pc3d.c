@@ -507,6 +507,14 @@ static int serve(struct client *c)
 	}
 	if (rq.code == PC3_VERSION_REQ)
 		return send_reply(c, 0, 0, PC3D_VERSION, (uint32_t)strlen(PC3D_VERSION));
+	if (rq.code == PC3_FBSHM) {
+		struct pc3_fbshm fs;
+
+		memset(&fs, 0, sizeof fs);
+		fs.pool = DISP_FB_POOL;
+		snprintf(fs.name, sizeof fs.name, "%s", disphw_fb_name());
+		return send_reply(c, 0, 0, &fs, (uint32_t)sizeof fs);
+	}
 
 	/* the display core is shared with the presenter's expansion */
 	pthread_mutex_lock(&pc3d_display_lock);
@@ -818,6 +826,7 @@ out:
 	 * for good - a live socket, no window, and a reboot to clear it. */
 	sock_close(listen_fd);
 	unlink(sock_path);
+	disphw_fb_done();
 	presenter_stop();		/* it closes the window on its own thread */
 	for (i = 0; i < PC3D_MAX_CLIENTS; i++)
 		if (clients[i].fd >= 0)
