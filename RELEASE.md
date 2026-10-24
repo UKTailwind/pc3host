@@ -11,20 +11,22 @@ kernel plays on the board. A program that runs here runs on the board,
 and it draws the same pixels: the graphics tests are compared against
 images captured from the machine itself.
 
-Until 0.8.0 this was Linux only. 0.9.0 carries the toolchain of the
-board's own Fuzix release 0.29: the translator follows the PicoMite
-firmware through V7.00, the display server has the kernel's fixed
-sound engine, and `LOAD PNG` the fixed decoder.
+Until 0.8.0 this was Linux only. 0.9.0 carried the toolchain of the
+board's own Fuzix release 0.29. 0.9.1 lifts the board's memory limits
+where a PC has no need of them, and adds MODE 3, the PicoMite's 640x480
+in sixteen colours: between them they run Matthias Hollatz's MMbg, a
+backgammon program with neural-net players, which plays itself here on
+Linux and on Windows.
 
 | | |
 |---|---|
-| `pc3host_0.9.0_amd64.deb` | Debian, Ubuntu, Mint and their kin |
-| `pc3host-0.9.0-win64.zip` | Windows 10 or later, 64-bit |
+| `pc3host_0.9.1_amd64.deb` | Debian, Ubuntu, Mint and their kin |
+| `pc3host-0.9.1-win64.zip` | Windows 10 or later, 64-bit |
 
 ## Linux
 
 ```
-sudo dpkg -i pc3host_0.9.0_amd64.deb
+sudo dpkg -i pc3host_0.9.1_amd64.deb
 ```
 
 Everything but the display server is statically linked, so it installs
@@ -96,7 +98,7 @@ checks its output to the last digit, and then opens the window.
 
 The compiler and its passes, the BASIC translator, the bytecode runtime,
 the editor, the image loaders, the four audio players and the display
-server. Beside them: 83 sample programs, the 112 test programs with the
+server. Beside them: 84 sample programs, the 167 test programs with the
 output each must produce, the whole translator source, the manuals, and
 the test scripts.
 
@@ -107,6 +109,13 @@ The board's hardware. There are no pins on a PC, so `SETPIN`, `PIN`,
 registers answer "not available" rather than pretending. Everything
 else - graphics, sound, the keyboard, files, and the `WEB` family over
 your machine's own network - is real.
+
+Nor, on purpose, the board's limits. The compiler and the runtime here
+have a PC's memory: a program may be bigger, hold more strings at once
+and use a larger heap than the board allows. MODE 3 - 640x480 in sixteen
+colours, as on a PicoMite with HDMI - exists only here, because the
+board has no room for its framebuffer. A program that relies on either
+runs here and not on the PC3.
 
 Timing is the other difference worth knowing. Frame pacing is a timer
 rather than a monitor's vertical blanking, and a graphics statement here

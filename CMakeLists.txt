@@ -445,10 +445,15 @@ install(FILES ${PC3_CC_HEADERS} DESTINATION lib/cc/include)
 # same place relative to bin/, so the gates see what the package sees.
 file(COPY ${PLAT_DIR}/ca.pem DESTINATION ${CMAKE_BINARY_DIR}/share/pc3host)
 install(FILES ${PLAT_DIR}/ca.pem DESTINATION share/pc3host)
-install(FILES README.md REVIEW.md PHASE0.md PHASE1.md PHASE2.md PHASE3.md
-              PHASE4.md PHASE5.md PHASE6.md PHASE7.md
-              ${PLAT_DIR}/PC3-C-MANUAL.md ${MMB_DIR}/README.md
+install(FILES README.md RELEASE.md REVIEW.md PHASE0.md PHASE1.md PHASE2.md
+              PHASE3.md PHASE4.md PHASE5.md PHASE6.md PHASE7.md
+              ${PLAT_DIR}/PC3-C-MANUAL.md
         DESTINATION share/doc/pc3host)
+# The translator's README has the same name as ours, and installed
+# beside it took its place; the whole mmb2c directory is in share/mmb2c
+# as well.
+install(FILES ${MMB_DIR}/README.md DESTINATION share/doc/pc3host
+        RENAME mmb2c-README.md)
 file(GLOB PC3_MAN ${FUZIX_ROOT}/Applications/man1/bcrun.1
                   ${FUZIX_ROOT}/Applications/man1/cc.1
                   ${FUZIX_ROOT}/Applications/man1/mmbc.1
