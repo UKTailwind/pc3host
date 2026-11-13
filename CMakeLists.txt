@@ -561,6 +561,13 @@ add_test(NAME editor-pty
             ${BIN}/mmbedit ${BIN}/cc ${GATE}/editor)
 set_tests_properties(editor-pty PROPERTIES TIMEOUT 180 RESOURCE_LOCK symtmp LABELS e2e)
 
+# PgUp and PgDn across whole and part screens: the cursor never moves down
+# while paging up, and reaches line 1 (FUZIX editor.c, PicoMite d059604).
+add_test(NAME editor-pgup
+    COMMAND python3 ${CMAKE_SOURCE_DIR}/tests/editor/mmbedit_pgup.py
+            ${BIN}/mmbedit ${GATE}/editor-pgup)
+set_tests_properties(editor-pgup PROPERTIES TIMEOUT 180 LABELS e2e)
+
 # Phase 7: the WEB family on the loopback - a TCP client against a
 # local HTTP server, the BASIC web server against curl, the UDP pair,
 # WEB CONNECT and MM.INFO(IP ADDRESS) from the server's NETIOC_STATUS,
