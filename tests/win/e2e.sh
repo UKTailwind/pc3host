@@ -14,7 +14,7 @@ T=$1; P=$2; W=$3
 	echo "usage: e2e.sh <tree> <pc3host> <work>" >&2; exit 2; }
 D=$P/tests/e2e
 rm -rf "$W"; mkdir -p "$W"; cd "$W" || exit 1
-cp "$D"/gfx1.bas "$D"/gfxc.c "$D"/keys.bas "$D"/play.bas "$D"/writebuff.bas "$D"/prtscr.bas "$D"/*.expected "$D"/*.golden.bmp .
+cp "$D"/gfx1.bas "$D"/gfxc.c "$D"/keys.bas "$D"/play.bas "$D"/writebuff.bas "$D"/prtscr.bas "$D"/onkeyarm.bas "$D"/*.expected "$D"/*.golden.bmp .
 export PC3_SOCKET="$(cygpath -w "$TEMP")\\pc3-e2e.sock"
 export PC3_AUTOSTART=0
 rm -f "$TEMP/pc3-e2e.sock"
@@ -62,6 +62,14 @@ for s in prtscr/SCREEN_*; do
 	[ -f "$s" ] || continue
 	if $PY "$(cygpath -w "$D/bmp2png.py")" --same "$s" prtscr/ref.bmp; then echo "pass  prtscr: $(basename "$s")"; else echo "FAIL  prtscr: $(basename "$s")"; fail=1; fi
 done
+# ON KEY k counts only a k that comes while it is armed (onkeyarm.bas)
+"$T/bin/cc.exe" onkeyarm.bas > onkeyarm.cc 2>&1 || { echo "FAIL  cc onkeyarm"; fail=1; }
+mkdir -p onkeyarm
+( cd onkeyarm && timeout 30 "$T/bin/bcrun.exe" ../onkeyarm.bc < /dev/null > ../onkeyarm.stdout 2>&1 ) &
+for i in $(seq 1 100); do [ -f onkeyarm/start ] && break; sleep 0.1; done
+sleep 0.5; $K tap A; sleep 2; $K tap A
+sleep 2.5
+check "onkeyarm" onkeyarm/onkeyarm.out onkeyarm.expected
 timeout 60 "$T/bin/pcmpace.exe" 2 512 16384 10000 > pcmpace.out 2>&1
 if grep -q "underruns while feeding: 0" pcmpace.out; then echo "pass  pcmpace"; else echo "FAIL  pcmpace"; tail -4 pcmpace.out; fail=1; fi
 "$T/bin/sndharness.exe" snd.wav 440 > /dev/null 2>&1

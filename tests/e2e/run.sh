@@ -184,6 +184,36 @@ if [ -x "$BIN/pc3key" ]; then
 	fi
 fi
 
+# ---- onkeyarm.bas: ON KEY k counts only a k that comes while it is armed ---------
+# A at +0.5 s (before ON KEY 97 is armed at +1.5 s) and at +2.5 s, from
+# when the program's "start" file appears; the program's header says
+# what each must do.
+if [ -x "$BIN/pc3key" ]; then
+	if ! ( cd "$W" && BIN=$BIN W=$W MMB2C=$BIN/mmbc bash "$M/fcc/fccbuild.sh" "$D/onkeyarm.bas" ) > "$W/onkeyarm.build.log" 2>&1; then
+		echo "FAIL  onkeyarm (build)"; tail -5 "$W/onkeyarm.build.log"; fail=1
+	else
+		K=$W/onkeyarm
+		mkdir -p "$K"
+		( cd "$K" && "$BIN/bcrun" "$W/onkeyarm.bc" < /dev/null > "$W/onkeyarm.stdout" 2>&1 ) &
+		PROG=$!
+		for i in $(seq 1 100); do
+			[ -f "$K/start" ] && break
+			sleep 0.1
+		done
+		sleep 0.5; "$BIN/pc3key" tap A
+		sleep 2;   "$BIN/pc3key" tap A
+		for i in $(seq 1 50); do
+			kill -0 $PROG 2>/dev/null || break
+			sleep 0.1
+		done
+		if kill -0 $PROG 2>/dev/null; then
+			echo "FAIL  onkeyarm: program did not finish"; kill $PROG; fail=1
+		fi
+		wait $PROG 2>/dev/null
+		check "onkeyarm" "$K/onkeyarm.out" "$D/onkeyarm.expected"
+	fi
+fi
+
 # ---- sound: the PCM ring paced by pcmpace, and PLAY through BASIC ----------------
 # The server runs miniaudio's null backend, which consumes frames in
 # real time and plays nothing.  pcmpace feeds a 440 Hz sine at playsnd's
