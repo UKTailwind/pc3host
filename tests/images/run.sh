@@ -10,7 +10,11 @@
 # the g*.bmp set) and are not here.
 #
 # The goldens were blessed with the GETPIXEL saveimage and reproduced by
-# the rows-out one, which is how that rewrite was proved.
+# the rows-out one, which is how that rewrite was proved.  They were
+# blessed again for PicoMite's RLE BMPs (FUZIX saveimage.c, 2026-11-14),
+# once every round trip held and each RLE file decoded to the 24-bit
+# file the old saveimage wrote for the same screen.  savepng is SAVE PNG
+# and LOAD PNG of its file; the PNGs' sums are kept as "png:" lines.
 #
 #   bash tests/images/run.sh <bin dir> <FUZIX root> <work dir> [bless]
 
@@ -24,13 +28,13 @@ export PC3_SOCKET=$W/img.sock
 export PC3_AUTOSTART=0
 unset PC3_DISPLAY
 
-TESTS="imgtrip imgloop wtest rtest imgm1 imgm1b imgm1c imgm1d saveimg"
+TESTS="imgtrip imgloop wtest rtest imgm1 imgm1b imgm1c imgm1d saveimg savepng"
 
 # The round trips: every picture each of these leaves must be the same
 # file, as each test's own comment says.  The goldens were once blessed
 # with LOAD IMAGE sending eight-byte colours on a PC, every reloaded
 # picture wrong, so this is checked before a bless as well.
-ROUNDTRIP="imgtrip imgloop imgm1 imgm1b imgm1c imgm1d"
+ROUNDTRIP="imgtrip imgloop imgm1 imgm1b imgm1c imgm1d savepng"
 
 fail=0
 die() { echo "images: $*" >&2; exit 1; }
@@ -57,7 +61,8 @@ for t in $TESTS; do
 	echo "exit $?" >> "$W/$t.raw"
 	# what the program left behind, then clear it for the next one
 	( cd "$W" && ls *.bmp 2>/dev/null | sort | xargs -r sum | sed 's/^/bmp: /' ) >> "$W/$t.raw"
-	rm -f "$W"/*.bmp
+	( cd "$W" && ls *.png 2>/dev/null | sort | xargs -r sum | sed 's/^/png: /' ) >> "$W/$t.raw"
+	rm -f "$W"/*.bmp "$W"/*.png
 	# an `ls -l` line (saveimg.bas) carries a date and an owner: keep
 	# the size and the name
 	tr -d '\r' < "$W/$t.raw" | sed -E 's/^-[rwxsStT-]{9}[ ]+[0-9]+[ ]+[^ ]+[ ]+[^ ]+[ ]+([0-9]+)[ ]+[A-Za-z]+[ ]+[0-9]+[ ]+[0-9:]+[ ]+(.*)$/\1 \2/' > "$W/$t.out"

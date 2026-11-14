@@ -12,7 +12,7 @@
  * PAGE_DOWN, INSERT, DELETE, F1..F12, LEFT_SHIFT, RIGHT_SHIFT,
  * LEFT_CONTROL, LEFT_ALT, CAPS_LOCK, KP_0..KP_9 and the punctuation
  * names MINUS EQUAL COMMA PERIOD SLASH SEMICOLON APOSTROPHE GRAVE_ACCENT
- * LEFT_BRACKET RIGHT_BRACKET BACKSLASH.
+ * LEFT_BRACKET RIGHT_BRACKET BACKSLASH, and PRINT_SCREEN.
  *
  * The server treats these exactly as keys from the window, through the
  * same decoder: what a program reads depends on the layout the server
@@ -52,6 +52,7 @@ static const struct {
 	{ "APOSTROPHE", MFB_KB_KEY_APOSTROPHE }, { "GRAVE_ACCENT", MFB_KB_KEY_GRAVE_ACCENT },
 	{ "LEFT_BRACKET", MFB_KB_KEY_LEFT_BRACKET }, { "RIGHT_BRACKET", MFB_KB_KEY_RIGHT_BRACKET },
 	{ "BACKSLASH", MFB_KB_KEY_BACKSLASH },
+	{ "PRINT_SCREEN", MFB_KB_KEY_PRINT_SCREEN },
 };
 
 static int key_of(const char *s)

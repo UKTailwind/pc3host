@@ -134,6 +134,56 @@ if [ -x "$BIN/pc3key" ]; then
 	fi
 fi
 
+# ---- prtscr.bas: OPTION PRINTSCREEN, Print Screen pressed by pc3key --------------
+# Once in each of the program's four two-second phases, counted from
+# when its ref.bmp appears (the program's header says what each is).
+# Three presses with the option on must leave two SCREEN_*.BMP and one
+# SCREEN_*.PNG, each the picture ref.bmp is, and never reach the
+# program; the fourth, with it off, is read as 157.  It runs in a
+# directory of its own, which is where the screenshots go.
+if [ -x "$BIN/pc3key" ]; then
+	if ! ( cd "$W" && BIN=$BIN W=$W MMB2C=$BIN/mmbc bash "$M/fcc/fccbuild.sh" "$D/prtscr.bas" ) > "$W/prtscr.build.log" 2>&1; then
+		echo "FAIL  prtscr (build)"; tail -5 "$W/prtscr.build.log"; fail=1
+	else
+		P=$W/prtscr
+		mkdir -p "$P"
+		( cd "$P" && "$BIN/bcrun" "$W/prtscr.bc" < /dev/null > "$W/prtscr.stdout" 2>&1 ) &
+		PROG=$!
+		for i in $(seq 1 100); do
+			[ -f "$P/ref.bmp" ] && break
+			sleep 0.1
+		done
+		sleep 1;  "$BIN/pc3key" tap PRINT_SCREEN
+		sleep 2;  "$BIN/pc3key" tap PRINT_SCREEN
+		sleep 2;  "$BIN/pc3key" tap PRINT_SCREEN
+		sleep 2;  "$BIN/pc3key" tap PRINT_SCREEN
+		for i in $(seq 1 50); do
+			kill -0 $PROG 2>/dev/null || break
+			sleep 0.1
+		done
+		if kill -0 $PROG 2>/dev/null; then
+			echo "FAIL  prtscr: program did not finish"; kill $PROG; fail=1
+		fi
+		wait $PROG 2>/dev/null
+		check "prtscr keys" "$P/prtscr.out" "$D/prtscr.expected"
+		nb=$(ls "$P"/SCREEN_*.BMP 2>/dev/null | wc -l)
+		np=$(ls "$P"/SCREEN_*.PNG 2>/dev/null | wc -l)
+		if [ "$nb" = 2 ] && [ "$np" = 1 ]; then
+			echo "pass  prtscr: two BMPs and a PNG"
+		else
+			echo "FAIL  prtscr: $nb BMPs and $np PNGs, not 2 and 1"; fail=1
+		fi
+		for s in "$P"/SCREEN_*; do
+			[ -f "$s" ] || continue
+			if python3 "$D/bmp2png.py" --same "$s" "$P/ref.bmp"; then
+				echo "pass  prtscr: $(basename "$s") is the screen"
+			else
+				echo "FAIL  prtscr: $(basename "$s")"; fail=1
+			fi
+		done
+	fi
+fi
+
 # ---- sound: the PCM ring paced by pcmpace, and PLAY through BASIC ----------------
 # The server runs miniaudio's null backend, which consumes frames in
 # real time and plays nothing.  pcmpace feeds a 440 Hz sine at playsnd's
