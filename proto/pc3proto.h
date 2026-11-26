@@ -88,14 +88,15 @@ struct pc3_hello {
  * its own version - or if the server does not know the question. */
 #define PC3_VERSION_REQ 0xFFFC
 
-/* The framebuffers' shared-memory object: its name, and the size of each
- * of the three buffers it holds, N then F then L.  The client maps it
- * for MM.INFO(WRITEBUFF) (pc3_fb_map).  An empty name: there is none,
- * and the buffers are the server's private memory. */
+/* The framebuffers' shared-memory object: its name, the size of each
+ * buffer, and how many it holds, N then F then L then 2 then T.  The
+ * client maps it for MM.INFO(WRITEBUFF) (pc3_fb_map).  An empty name:
+ * there is none, and the buffers are the server's private memory. */
 #define PC3_FBSHM 0xFFFB
 struct pc3_fbshm {
 	uint32_t pool;		/* bytes in each buffer */
 	char name[60];		/* "/pc3fb-<pid>", or "Local\\pc3fb-<pid>" */
+	uint32_t count;		/* buffers in the block */
 };
 struct pc3_inject {
 	int32_t key;		/* MFB_KB_KEY_* */
@@ -148,6 +149,17 @@ struct pc3w_blit {
 struct pc3w_blitr {
 	uint32_t offset;
 	uint16_t len, rows, stride, pad;
+};
+
+/* GFXIOC_WARP: struct gfx_warp without its pointers, then each array
+ * that is there, a[0] first, n elements of esize bytes: 4 for WARPH and
+ * WARPV, 8 for AFFINE and SPAN.  Bit i of mask says a[i] was sent. */
+struct pc3w_warp {
+	uint8_t op, src, dst, outside;
+	uint16_t n, step;
+	int32_t first, left, width, edge, trans;
+	uint8_t mask;
+	uint8_t pad[3];
 };
 
 /* GFXIOC_FONTDEF: then the font, bytes long, header first.  The server

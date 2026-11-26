@@ -27,11 +27,11 @@
 #include "display_priv.h"
 #include "pc3d.h"
 
-/* The three framebuffers, N then F then L.  On the board disp_fb is SRAM
- * and the other two are the PSRAM window; here they are one block of
- * shared memory, so that a program can map it and find its picture at
- * MM.INFO(WRITEBUFF), as a PicoMite program finds its own.  display.h
- * points disp_fb, disp_fb2 and disp_fb3 into it. */
+/* The framebuffers, N then F then L, then 2 and T (display.h,
+ * DISP_FB_COUNT).  On the board disp_fb is SRAM and F and L are the PSRAM
+ * window; here they are one block of shared memory, so that a program
+ * can map it and find its picture at MM.INFO(WRITEBUFF), as a PicoMite
+ * program finds its own.  display.h points disp_fb to disp_fb5 into it. */
 uint8_t *disp_fbs;
 static char fbs_name[60];
 
@@ -63,7 +63,7 @@ static void fbs_sweep(void)
  * draws as before, and only MM.INFO(WRITEBUFF) is refused. */
 static void fbs_make(void)
 {
-	size_t n = 3 * (size_t)DISP_FB_POOL;
+	size_t n = DISP_FB_COUNT * (size_t)DISP_FB_POOL;
 #ifdef _WIN32
 	/* the object lives while any handle or view on it does */
 	snprintf(fbs_name, sizeof fbs_name, "Local\\pc3fb-%d", (int)getpid());
@@ -185,5 +185,5 @@ void disphw_init(void)
 	memset(disp_tile_bg, 0x00, sizeof disp_tile_bg);
 	if (disp_fbs == NULL)
 		fbs_make();
-	memset(disp_fbs, 0, 3 * (size_t)DISP_FB_POOL);
+	memset(disp_fbs, 0, DISP_FB_COUNT * (size_t)DISP_FB_POOL);
 }

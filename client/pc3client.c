@@ -503,9 +503,9 @@ static int roundtrip(int fd, uint16_t code, const void *in, size_t nin,
  * memory (0x30000000) and its heap (0x40000000). */
 #define PC3_FB_MAPAT	0x50000000UL
 
-/* Map the server's three framebuffers, N then F then L, and return where
- * they are, with the size of each in *pool.  0 if the server has no
- * shared block, or it cannot be had below 4G. */
+/* Map the server's framebuffers, N then F then L then 2 then T, and
+ * return where they are, with the size of each in *pool.  0 if the
+ * server has no shared block, or it cannot be had below 4G. */
 unsigned long pc3_fb_map(int fd, unsigned long *pool)
 {
 	struct pc3_fbshm fs;
@@ -515,9 +515,9 @@ unsigned long pc3_fb_map(int fd, unsigned long *pool)
 	if (roundtrip(fd, PC3_FBSHM, NULL, 0, &fs, sizeof fs) < 0)
 		return 0;
 	fs.name[sizeof fs.name - 1] = 0;
-	if (fs.name[0] == 0 || fs.pool == 0)
+	if (fs.name[0] == 0 || fs.pool == 0 || fs.count < 3 || fs.count > 8)
 		return 0;
-	n = 3 * (size_t)fs.pool;
+	n = fs.count * (size_t)fs.pool;
 #ifdef _WIN32
 	p = pc3w_shm_map(fs.name, n, (void *)PC3_FB_MAPAT);
 	if (p == NULL)
@@ -691,6 +691,8 @@ int pc3_sys_ioctl(int fd, unsigned long code, void *arg)
 		return roundtrip(fd, (uint16_t)code, arg, sizeof(struct gfx_rect), NULL, 0);
 	case GFXIOC_SCROLL2:
 		return roundtrip(fd, (uint16_t)code, arg, sizeof(struct gfx_scroll2), NULL, 0);
+	case GFXIOC_RESIZE:
+		return roundtrip(fd, (uint16_t)code, arg, sizeof(struct gfx_resize), NULL, 0);
 
 	/* fixed-width structures, in and out */
 	case GFXIOC_FONTINFO:
@@ -812,6 +814,42 @@ int pc3_sys_ioctl(int fd, unsigned long code, void *arg)
 			memcpy(gr->buf, repbuf, n);
 		}
 		return ret;
+	}
+	case GFXIOC_WARP: {
+		/* the arrays are the program's, so they go after the fixed
+		 * part, packed into one buffer - there can be four */
+		const struct gfx_warp *gw = arg;
+		struct pc3w_warp w;
+		size_t es, each, total;
+		unsigned char *m, *p;
+		int i;
+		if (!gw) { errno = EFAULT; return -1; }
+		es = (gw->op == GFX_AFFINE || gw->op == GFX_SPAN) ? 8 : 4;
+		each = (size_t)gw->n * es;
+		memset(&w, 0, sizeof w);
+		w.op = gw->op; w.src = gw->src; w.dst = gw->dst; w.outside = gw->outside;
+		w.n = gw->n; w.step = gw->step; w.first = gw->first;
+		w.left = gw->left; w.width = gw->width; w.edge = gw->edge;
+		w.trans = gw->trans;
+		total = sizeof w;
+		for (i = 0; i < 4; i++)
+			if (gw->a[i]) {
+				w.mask |= (uint8_t)(1 << i);
+				total += each;
+			}
+		if (total > PC3_MAX_PAYLOAD) { errno = EINVAL; return -1; }
+		m = malloc(total);
+		if (!m) { errno = ENOMEM; return -1; }
+		memcpy(m, &w, sizeof w);
+		p = m + sizeof w;
+		for (i = 0; i < 4; i++)
+			if (gw->a[i]) {
+				memcpy(p, gw->a[i], each);
+				p += each;
+			}
+		i = exchange(fd, (uint16_t)code, 0, m, total, NULL, 0, NULL, 0, &ret) < 0;
+		free(m);
+		return i ? -1 : ret;
 	}
 	case GFXIOC_FONTDEF: {
 		const struct gfx_fontdef *fd_ = arg;

@@ -15,6 +15,7 @@ T=$1; P=$2; W=$3
 D=$P/tests/e2e
 rm -rf "$W"; mkdir -p "$W"; cd "$W" || exit 1
 cp "$D"/gfx1.bas "$D"/gfxc.c "$D"/keys.bas "$D"/play.bas "$D"/writebuff.bas "$D"/prtscr.bas "$D"/onkeyarm.bas "$D"/*.expected "$D"/*.golden.bmp .
+cp "$D"/warp_test.bas "$D"/affine_test.bas "$D"/layers.bas "$D"/layers_tft.bas .
 export PC3_SOCKET="$(cygpath -w "$TEMP")\\pc3-e2e.sock"
 export PC3_AUTOSTART=0
 rm -f "$TEMP/pc3-e2e.sock"
@@ -76,5 +77,36 @@ if grep -q "underruns while feeding: 0" pcmpace.out; then echo "pass  pcmpace"; 
 "$T/bin/cc.exe" play.bas > play.cc 2>&1 || { echo "FAIL  cc play"; fail=1; }
 timeout 60 "$T/bin/bcrun.exe" play.bc > play.out 2>&1
 check "play" play.out play.expected
+# MMBasic V8's raster commands: tests/e2e/run.sh says what these are and
+# why the AFFINE and SPAN counts are not compared
+for t in warp_test affine_test; do
+	"$T/bin/cc.exe" $t.bas > $t.cc 2>&1 || { echo "FAIL  cc $t"; cat $t.cc; fail=1; }
+	timeout 120 "$T/bin/bcrun.exe" $t.bc < /dev/null > $t.out 2>&1
+	# Git Bash's sed drops the CRs, so they are taken out of both
+	tr -d '\r' < $t.out | sed -E 's/:[0-9]+ AFFINE and[0-9]+ SPAN cases/:n AFFINE and n SPAN cases/' > $t.cmp
+	tr -d '\r' < $t.expected > $t.exp
+	check "$t" $t.cmp $t.exp
+done
+kill $SRV 2>/dev/null; sleep 1
+# The live layers, read from the window a server of their own presented
+# (--snapshot), as run.sh does
+export PC3_SOCKET="$(cygpath -w "$TEMP")\\pc3-e2e-layers.sock"
+rm -f "$TEMP/pc3-e2e-layers.sock"
+"$T/bin/pc3d.exe" --headless --audio null --scale 1 --snapshot snap.ppm \
+	--socket "$PC3_SOCKET" > pc3d-layers.log 2>&1 &
+SRV=$!
+sleep 1.5
+for t in layers layers_tft; do
+	"$T/bin/cc.exe" $t.bas > $t.cc 2>&1 || { echo "FAIL  cc $t"; cat $t.cc; fail=1; }
+	rm -f snap.ppm
+	timeout 60 "$T/bin/bcrun.exe" $t.bc < /dev/null > $t.stdout 2>&1
+	for i in $(seq 1 50); do [ -s snap.ppm ] && break; sleep 0.1; done
+	$PY "$(cygpath -w "$D/ppmpix.py")" snap.ppm 1 $(cut -d' ' -f1 $t.expected | tr -d '\r') > $t.out 2>&1
+	if diff -q <(tr -d '\r' < $t.out) <(tr -d '\r' < $t.expected) > /dev/null; then
+		echo "pass  $t pixels"
+	else
+		echo "FAIL  $t pixels"; fail=1
+	fi
+done
 kill $SRV 2>/dev/null; sleep 1
 exit $fail

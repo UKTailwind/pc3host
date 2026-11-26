@@ -1,0 +1,24 @@
+MODE2 (320x240):n AFFINE and n SPAN cases,4800 samples,0 wrong,0 pattern errors
+MODE3 (640x480):n AFFINE and n SPAN cases,4800 samples,0 wrong,0 pattern errors
+MODE 5: not available (MODE must be 1, 2 or 3)
+MODE 4: not available (MODE must be 1, 2 or 3)
+quarter turn:0 wrong
+error test 1: Same framebuffer
+error test 2: Layer not created
+error test 3: Array 2 has 9 elements, array 1 has 10
+error test 4: Array 4 has 9 elements, array 1 has 10
+error test 5: Argument 5 must be an integer array
+error test 6: 0 is invalid (valid is 1 to 240)
+error test 7: 0 is invalid (valid is 1 to 16777216)
+error test 8: Right array has 9 elements, left array has 10
+error test 9: 2 is invalid (valid is 0 to 1)
+error test 10: 0 is invalid (valid is 1 to 240)
+error test 11: Invalid syntax
+error test 12: 16 is invalid (valid is 0 to 15)
+error test 13: Layer Top not created
+error test 14: Not available in mode 1
+error test 15: Not available in mode 1
+MODE2 (320x240):n AFFINE and n SPAN cases,4800 samples,0 wrong,0 pattern errors
+MODE3 (640x480):n AFFINE and n SPAN cases,4800 samples,0 wrong,0 pattern errors
+quarter turn:0 wrong
+AFFINE AND SPAN TEST PASSED

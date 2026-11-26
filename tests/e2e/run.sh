@@ -88,6 +88,62 @@ else
 	check "writebuff bytes" "$W/writebuff.out" "$D/writebuff.expected"
 fi
 
+# ---- warp_test.bas, affine_test.bas: MMBasic V8's raster commands -------------
+# The PicoMite's own Bas/bench tests, unmodified: FRAMEBUFFER WARPH and
+# WARPV, then AFFINE and SPAN, every case checked with PIXEL() against
+# the program's own model of the command, in MODE 2 and MODE 3 (MODE 4
+# and 5 report that this machine has no such mode), then each error by
+# MM.ERRMSG$.  They draw with framebuffer 2 and name T, as the VGA and
+# HDMI firmware has them.  The core is checked pixel for pixel by
+# tests/seam/warp_core.c; this is the whole chain.  RND is the hardware
+# generator's here, as on an RP2350 (RANDOMIZE is a no-op), so the cases
+# differ from run to run: how many of affine_test's were AFFINE and how
+# many SPAN is the one number that does, and it is not compared.
+for t in warp_test affine_test; do
+	if ! ( cd "$W" && BIN=$BIN W=$W MMB2C=$BIN/mmbc bash "$M/fcc/fccbuild.sh" "$D/$t.bas" ) > "$W/$t.build.log" 2>&1; then
+		echo "FAIL  $t (build)"; tail -5 "$W/$t.build.log"; fail=1
+	else
+		( cd "$W" && "$BIN/bcrun" "$W/$t.bc" < /dev/null > "$W/$t.out" 2>&1 )
+		sed -E 's/:[0-9]+ AFFINE and[0-9]+ SPAN cases/:n AFFINE and n SPAN cases/' \
+			"$W/$t.out" > "$W/$t.cmp"
+		check "$t" "$W/$t.cmp" "$D/$t.expected"
+	fi
+done
+
+# ---- layers.bas, layers_tft.bas: the layers as the window shows them -----------
+# Framebuffer 2 MERGEd over F, and L and T shown live, T over L, as the
+# VGA and HDMI firmware shows them; then the TFT model, where a MERGE of
+# the layer stops it being shown live.  The pixels are read from the
+# window pc3d presented as each program left, and the colours expected
+# are worked from the rules (each program's header), not blessed.  A
+# server of their own, with --snapshot: it writes the window at every
+# disconnect, which would slow the key tests' server down.
+LSOCK=$W/layers.sock
+"$BIN/pc3d" --headless --audio null --scale 1 --snapshot "$W/snap.ppm" \
+	--socket "$LSOCK" &
+LSRV=$!
+for i in $(seq 1 50); do
+	[ -S "$LSOCK" ] && break
+	sleep 0.1
+done
+for t in layers layers_tft; do
+	if ! ( cd "$W" && BIN=$BIN W=$W MMB2C=$BIN/mmbc bash "$M/fcc/fccbuild.sh" "$D/$t.bas" ) > "$W/$t.build.log" 2>&1; then
+		echo "FAIL  $t (build)"; tail -5 "$W/$t.build.log"; fail=1
+	else
+		rm -f "$W/snap.ppm"
+		( cd "$W" && PC3_SOCKET=$LSOCK "$BIN/bcrun" "$W/$t.bc" < /dev/null > "$W/$t.stdout" 2>&1 )
+		for i in $(seq 1 50); do	# the snapshot is written as the server sees it go
+			[ -s "$W/snap.ppm" ] && break
+			sleep 0.1
+		done
+		python3 "$D/ppmpix.py" "$W/snap.ppm" 1 $(cut -d' ' -f1 "$D/$t.expected") \
+			> "$W/$t.out" 2>&1
+		check "$t pixels" "$W/$t.out" "$D/$t.expected"
+	fi
+done
+kill $LSRV 2>/dev/null
+wait $LSRV 2>/dev/null
+
 # ---- gfxc.c: MODE 0 from C, through bcrun's libcalls --------------------------
 # The program includes pico_ioctl.h; fccbuild's include path has the
 # work directory in it, so the header goes there.

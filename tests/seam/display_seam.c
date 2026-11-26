@@ -30,9 +30,9 @@
 
 /* --- what the kernel would have supplied ---------------------------------- */
 
-/* display.h's three buffers, N then F then L, as pc3d's disphw.c
+/* display.h's buffers, N then F then L then 2 then T, as pc3d's disphw.c
  * makes them - here plain memory */
-static uint8_t fbs[3 * DISP_FB_POOL] __attribute__((aligned(4)));
+static uint8_t fbs[DISP_FB_COUNT * DISP_FB_POOL] __attribute__((aligned(4)));
 uint8_t *disp_fbs = fbs;
 
 int display_fb2_ok(void) { return 1; }
@@ -321,6 +321,139 @@ int main(void)
           display_gfx_getpixel(639, 479));
     CHECK(display_gfx_remap(1, 0x00FF00) == 0, "mode 8 has MAP");
     display_gfx_mode(0xFF);
+
+    /* --- framebuffer 2, the top layer, the live layers and MERGE --------
+     * A PC's only, as the VGA and HDMI PicoMite has them (display.h).
+     * The pixels of WARPH and the rest are warp_core's business; here
+     * the claims, which buffer MERGE takes, and the refusals of a
+     * request that is out of range - a client is not trusted. */
+    {
+        struct p_tab me = { NULL }, other = { NULL };
+        const uint8_t *lay, *top;
+        int lt, tt;
+        int32_t off[240];
+        int64_t lr[2] = { 0, 319 };
+        struct gfx_warp g;
+        struct gfx_resize z;
+
+        display_gfx_mode(7);
+
+        /* PIXEL() reads MMBasic's fixed colour for the index, whatever
+         * MAP has made the screen show (warp_demo.bas fades to black
+         * and then looks for its logo's colour) */
+        display_gfx_pixel(0, 0, 15);
+        display_gfx_pixel(1, 0, 2);
+        for (i = 0; i < 16; i++)
+            display_gfx_remap(i, 0);
+        display_gfx_remap_apply();
+        CHECK(display_gfx_getpixel(0, 0) == 0, "the screen shows black: %06x",
+              display_gfx_getpixel(0, 0));
+        CHECK(display_gfx_pixel_read(0, 0) == 0xFFFFFF &&
+              display_gfx_pixel_read(1, 0) == 0x004000,
+              "PIXEL() reads the firmware's colours: %06x %06x",
+              display_gfx_pixel_read(0, 0), display_gfx_pixel_read(1, 0));
+        display_gfx_remap_reset();
+
+        display_fb_live(&lay, &lt, &top, &tt);
+        CHECK(lay == NULL && top == NULL, "no layers to show at first");
+        CHECK(display_fb_open(&me, 1, DISP_FB_2) == 0, "create 2");
+        CHECK(display_fb_open(&me, 1, DISP_FB_T) == 0, "create T");
+        CHECK(display_fb_open(&other, 1, DISP_FB_2) == -2, "2 is the owner's");
+        CHECK(display_fb_open(&me, 1, 5) == -1, "no buffer 5");
+        display_fb_transparent(&me, DISP_FB_T, 3);
+        display_fb_live(&lay, &lt, &top, &tt);
+        CHECK(lay == NULL && top == disp_fb5 && tt == 3, "T is shown live, 3 clear");
+        CHECK(display_fb_open(&me, 1, DISP_FB_L) == 0, "create L");
+        display_fb_transparent(&me, DISP_FB_L, 9);
+        display_fb_live(&lay, &lt, &top, &tt);
+        CHECK(lay == disp_fb3 && lt == 9, "L is shown live, 9 clear");
+        CHECK(display_fb_merge(&me, 0) == -1, "MERGE wants F");
+        CHECK(display_fb_open(&me, 1, DISP_FB_F) == 0, "create F");
+
+        /* MERGE with a 2: 2 over F, and the layer stays live */
+        memset(disp_fb2, 0x11, DISP_FB_POOL);         /* F: index 1 */
+        memset(disp_fb4, 0x99, DISP_FB_POOL);         /* 2: index 9 ... */
+        disp_fb4[0] = 0xEE;                             /* ... but its first two */
+        CHECK(display_fb_merge(&me, 9) == 0, "MERGE 2 over F");
+        CHECK(disp_fb[0] == 0xEE && disp_fb[1] == 0x11, "2 over F: %02x %02x",
+              disp_fb[0], disp_fb[1]);
+        display_fb_live(&lay, &lt, &top, &tt);
+        CHECK(lay == disp_fb3, "a MERGE of 2 leaves L live");
+
+        /* the raster commands: the owner's buffers only, legal requests only */
+        memset(off, 0, sizeof off);
+        memset(&g, 0, sizeof g);
+        g.op = GFX_WARPH; g.src = DISP_FB_2; g.dst = DISP_FB_N;
+        g.n = 240; g.step = 1; g.first = 0; g.edge = GFX_WARP_WRAP; g.trans = -1;
+        g.a[0] = off;
+        CHECK(display_gfx_warp(&me, &g) == 0, "WARPH from 2");
+        CHECK(memcmp(disp_fb, disp_fb4, 38400) == 0, "WARPH by 0 is a copy");
+        CHECK(display_gfx_warp(&other, &g) == -1, "2 is not another's to read");
+        g.src = DISP_FB_N;
+        CHECK(display_gfx_warp(&me, &g) == -1, "WARPH N to N refused");
+        g.src = DISP_FB_F;
+        off[100] = 320;
+        CHECK(display_gfx_warp(&me, &g) == -1, "a wrapping offset of 320 refused");
+        g.edge = GFX_WARP_LEAVE;
+        CHECK(display_gfx_warp(&me, &g) == 0, "with an edge, 320 is legal");
+        g.n = 241;
+        CHECK(display_gfx_warp(&me, &g) == -1, "241 bands refused");
+        g.n = 240; g.trans = 16;
+        CHECK(display_gfx_warp(&me, &g) == -1, "transparent 16 refused");
+        g.trans = -1; g.step = 2;
+        CHECK(display_gfx_warp(&me, &g) == -1, "240 bands of 2 rows refused");
+        memset(&g, 0, sizeof g);
+        g.op = GFX_SPAN; g.src = DISP_FB_F; g.dst = DISP_FB_F;
+        g.n = 1; g.step = 1; g.first = 239; g.edge = 0x0000FF; g.trans = -1;
+        g.a[0] = &lr[0]; g.a[1] = &lr[1];
+        CHECK(display_gfx_warp(&me, &g) == 0, "SPAN of one buffer: the fill");
+        g.edge = GFX_WARP_WRAP;
+        CHECK(display_gfx_warp(&me, &g) == -1, "SPAN has no wrap");
+        g.edge = -1; g.a[1] = NULL;
+        CHECK(display_gfx_warp(&me, &g) == -1, "SPAN wants two arrays");
+        g.op = 9;
+        CHECK(display_gfx_warp(&me, &g) == -1, "no command 9");
+
+        /* BLIT RESIZE: a quarter of 2 doubled onto N, cut at the edge */
+        memset(&z, 0, sizeof z);
+        z.src = DISP_FB_2; z.dst = DISP_FB_N; z.trans = -1;
+        z.sx = 0; z.sy = 0; z.sw = 160; z.sh = 120;
+        z.dx = 0; z.dy = 0; z.dw = 320; z.dh = 240;
+        CHECK(display_gfx_resize(&me, &z) == 0, "RESIZE 2 to N");
+        /* source pixels 0 and 1 are 14, pixel 2 is 9: each shown twice */
+        CHECK(disp_fb[0] == 0xEE && disp_fb[1] == 0xEE && disp_fb[2] == 0x99,
+              "the doubled first pixels: %02x %02x %02x",
+              disp_fb[0], disp_fb[1], disp_fb[2]);
+        z.sw = 321;
+        CHECK(display_gfx_resize(&me, &z) == -1, "a source off the buffer refused");
+        z.sw = 160; z.trans = -2;
+        CHECK(display_gfx_resize(&me, &z) == -1, "transparent -2 refused");
+        z.trans = -1; z.src = DISP_FB_T;
+        CHECK(display_gfx_resize(&other, &z) == -1, "T is not another's");
+
+        /* without a 2, MERGE is the layer over F, which then stops being live */
+        CHECK(display_fb_open(&me, 0, DISP_FB_2) == 0, "close 2");
+        CHECK(display_fb_merge(&me, 9) == 0, "MERGE of the layer");
+        display_fb_live(&lay, &lt, &top, &tt);
+        CHECK(lay == NULL && top == disp_fb5, "a merged layer is not shown live");
+        CHECK(display_fb_open(&me, 0, DISP_FB_L) == 0 &&
+              display_fb_open(&me, 1, DISP_FB_L) == 0, "a new layer");
+        display_fb_live(&lay, &lt, &top, &tt);
+        CHECK(lay == disp_fb3 && lt == 0, "a new layer is live again, 0 clear");
+
+        /* in a one-bit mode there is nothing to warp, and a mode change
+         * takes every buffer away */
+        display_gfx_mode(0xFF);
+        display_fb_live(&lay, &lt, &top, &tt);
+        CHECK(lay == NULL && top == NULL, "MODE drops the layers");
+        CHECK(display_fb_open(&me, 1, DISP_FB_F) == 0, "F in the console");
+        memset(&g, 0, sizeof g);
+        g.op = GFX_WARPH; g.src = DISP_FB_F; g.dst = DISP_FB_N;
+        g.n = 1; g.step = 1; g.edge = GFX_WARP_WRAP; g.trans = -1; g.a[0] = off;
+        off[0] = 0;
+        CHECK(display_gfx_warp(&me, &g) == -1, "no WARPH in a one-bit mode");
+        display_fb_release(&me);
+    }
 
     if (fails) {
         printf("display seam: %d check(s) FAILED\n", fails);

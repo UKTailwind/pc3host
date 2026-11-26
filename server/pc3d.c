@@ -512,6 +512,7 @@ static int serve(struct client *c)
 
 		memset(&fs, 0, sizeof fs);
 		fs.pool = DISP_FB_POOL;
+		fs.count = DISP_FB_COUNT;
 		snprintf(fs.name, sizeof fs.name, "%s", disphw_fb_name());
 		return send_reply(c, 0, 0, &fs, (uint32_t)sizeof fs);
 	}

@@ -304,11 +304,26 @@ pc3_util(sndharness ${UTIL_DIR}/sndharness.c)
 # is display_hstx.c).  This links it against a stand-in for everything
 # display_priv.h asks of the hardware and drives the primitives.  If
 # this stops compiling, the seam has been crossed in the kernel.
-add_executable(display_seam tests/seam/display_seam.c ${PLAT_DIR}/display.c)
+add_executable(display_seam tests/seam/display_seam.c ${PLAT_DIR}/display.c
+                            ${PLAT_DIR}/display_warp.c)
 target_compile_definitions(display_seam PRIVATE PC_HOST)
 target_include_directories(display_seam PRIVATE ${PLAT_DIR})
 target_compile_options(display_seam PRIVATE -g -Wall -Wextra -Wno-unused-parameter)
 target_link_libraries(display_seam PRIVATE ${PC3_SHIM})
+
+# FRAMEBUFFER WARPH, WARPV, AFFINE and SPAN: display_warp.c's core against
+# a pixel model of the PicoMite's design, in a PC's pixel order and in the
+# board's - display_priv.h read each way, the board's through a kernel.h
+# of the test's own (tests/seam/warp_core.c).
+add_executable(warp_core_pc tests/seam/warp_core.c)
+target_compile_definitions(warp_core_pc PRIVATE PC_HOST)
+add_executable(warp_core_board tests/seam/warp_core.c)
+target_include_directories(warp_core_board PRIVATE tests/seam/warpinc)
+foreach(t warp_core_pc warp_core_board)
+    target_include_directories(${t} PRIVATE ${PLAT_DIR})
+    target_compile_options(${t} PRIVATE -O2 -g -Wall -Wextra -Wno-unused-parameter)
+    target_link_libraries(${t} PRIVATE ${PC3_SHIM})
+endforeach()
 
 # ---- the C standard, and why it is pinned --------------------------------------
 # gcc 15 compiles C23 by default, and against glibc 2.38+ headers that
@@ -367,8 +382,8 @@ add_executable(pc3d
     server/pc3d.c server/dispatch.c server/disphw.c server/present.c
     server/window.c server/fontdata.c server/keyboard.c ${PC3D_OS}
     server/sndhw.c server/miniaudio.c server/presenter.c
-    ${PLAT_DIR}/display.c ${PLAT_DIR}/fonts.c ${PLAT_DIR}/kbd_decode.c
-    ${PLAT_DIR}/sound.c)
+    ${PLAT_DIR}/display.c ${PLAT_DIR}/display_warp.c ${PLAT_DIR}/fonts.c
+    ${PLAT_DIR}/kbd_decode.c ${PLAT_DIR}/sound.c)
 target_compile_definitions(pc3d PRIVATE PC_HOST PC3D_VERSION="${PC3_VERSION}")
 # the client asks a server its version and says when they differ
 target_compile_definitions(pc3client PRIVATE PC3_CLIENT_VERSION="${PC3_VERSION}")
@@ -408,7 +423,8 @@ target_link_libraries(pc3key PRIVATE pc3client)
 if(PC3_STATIC)
     foreach(t cc0 cc1 cc2 bcdump dumptokens ccbc bcrun bcrun-gate cpp mmbc mmbedit
               loadjpg loadpng loadimage saveimage playmp3 playwav playflac playmod
-              playsnd pcmpace sndharness pc3key ntpdate display_seam sound_seam)
+              playsnd pcmpace sndharness pc3key ntpdate display_seam sound_seam
+              warp_core_pc warp_core_board)
         target_link_options(${t} PRIVATE -static)
     endforeach()
     # pc3d stays dynamic (see the note at the option), C++ runtime
@@ -518,6 +534,8 @@ enable_testing()
 set(GATE ${CMAKE_BINARY_DIR}/gate)
 
 add_test(NAME seam-display COMMAND display_seam)
+add_test(NAME seam-warp-pc COMMAND warp_core_pc 100000)
+add_test(NAME seam-warp-board COMMAND warp_core_board 100000)
 add_test(NAME seam-sound
     COMMAND bash ${CMAKE_SOURCE_DIR}/tests/seam/sound_seam.sh ${BIN} ${GATE}/sound)
 
@@ -602,4 +620,5 @@ set_tests_properties(fcc-gate fcc-gate-mmbc cgate gcc-check PROPERTIES
     TIMEOUT 1800 RESOURCE_LOCK symtmp)
 set_tests_properties(fcc-gate fcc-gate-mmbc cgate gcc-check libgate refuse
     PROPERTIES LABELS gates)
-set_tests_properties(seam-display seam-sound PROPERTIES LABELS seam)
+set_tests_properties(seam-display seam-sound seam-warp-pc seam-warp-board
+    PROPERTIES LABELS seam)

@@ -147,6 +147,45 @@ static void expand_5to8(const uint8_t *src, uint32_t *out)
 /* the raster, before scaling: 1024x768 is the largest */
 static uint32_t raster[1024 * 768];
 
+/*
+ * The live layers over one row of the screen, as the VGA and HDMI
+ * PicoMite's scanout puts them (HDMI.c, SCREENMODE2 and 3): a pixel of T
+ * that is not T's transparent index, else one of L that is not L's,
+ * else the screen's.  nbytes of 4-bit pixels; the row itself when there
+ * is no layer to show (display.h, display_fb_live).
+ */
+static const uint8_t *layered(const uint8_t *n, const uint8_t *l, int lt,
+			      const uint8_t *t, int tt, int nbytes)
+{
+	static uint8_t row[320];
+	int i;
+
+	if (l == NULL && t == NULL)
+		return n;
+	for (i = 0; i < nbytes; i++) {
+		int e = PX4_EVEN_GET(n[i]), o = PX4_ODD_GET(n[i]);
+
+		if (l) {
+			int le = PX4_EVEN_GET(l[i]), lo = PX4_ODD_GET(l[i]);
+
+			if (le != lt)
+				e = le;
+			if (lo != lt)
+				o = lo;
+		}
+		if (t) {
+			int te = PX4_EVEN_GET(t[i]), to = PX4_ODD_GET(t[i]);
+
+			if (te != tt)
+				e = te;
+			if (to != tt)
+				o = to;
+		}
+		row[i] = (uint8_t)(PX4_EVEN(e) | PX4_ODD(o));
+	}
+	return row;
+}
+
 static void expand_raster(uint32_t *out);
 
 void present_frame(uint32_t *out)
@@ -180,19 +219,23 @@ void present_frame(uint32_t *out)
 
 static void expand_raster(uint32_t *out)
 {
-	int w, h, y, x;
+	int w, h, y, x, lt, tt;
+	const uint8_t *lay, *top;
 
 	raster_size(&w, &h);
+	/* the layers a program has made, shown live (display.h) */
+	display_fb_live(&lay, &lt, &top, &tt);
 
 	switch (gfx_exp) {
-	case EXP_CONSOLE:
+	case EXP_CONSOLE:	/* MODE 1: the layer ORed in, as on HDMI */
 		for (y = 0; y < 480; y++) {
 			const uint8_t *fc = &disp_tile_fg[(y / DISP_CELL_H) * DISP_COLS];
 			const uint8_t *bc = &disp_tile_bg[(y / DISP_CELL_H) * DISP_COLS];
 			const uint8_t *d = &disp_fb[y * DISP_STRIDE];
+			const uint8_t *ld = lay ? &lay[y * DISP_STRIDE] : NULL;
 			uint32_t *p = out + y * 640;
 			for (x = 0; x < DISP_COLS; x++) {
-				uint8_t v = d[x];
+				uint8_t v = (uint8_t)(d[x] | (ld ? ld[x] : 0));
 				uint32_t f = argb[fc[x]], b = argb[bc[x]];
 				int k;
 				for (k = 0; k < 8; k++)
@@ -201,9 +244,11 @@ static void expand_raster(uint32_t *out)
 		}
 		break;
 
-	case EXP_4BPP_X2:
+	case EXP_4BPP_X2:	/* MODE 2: T over L over the screen */
 		for (y = 0; y < 480; y++) {
-			const uint8_t *s = &disp_fb[(y >> 1) * 160];
+			int o = (y >> 1) * 160;
+			const uint8_t *s = layered(&disp_fb[o], lay ? lay + o : NULL, lt,
+						   top ? top + o : NULL, tt, 160);
 			uint32_t *p = out + y * 640;
 			for (x = 0; x < 160; x++) {
 				uint32_t c1 = argb[gfx_pal[PX4_EVEN_GET(s[x])]];
@@ -215,9 +260,11 @@ static void expand_raster(uint32_t *out)
 		}
 		break;
 
-	case EXP_4BPP_X1:	/* MMBasic's MODE 3: 640x480, a nibble a pixel */
+	case EXP_4BPP_X1:	/* MMBasic's MODE 3: 640x480, a nibble a pixel; L over it */
 		for (y = 0; y < 480; y++) {
-			const uint8_t *s = &disp_fb[y * 320];
+			const uint8_t *s = layered(&disp_fb[y * 320],
+						   lay ? lay + y * 320 : NULL, lt,
+						   NULL, 0, 320);
 			uint32_t *p = out + y * 640;
 			for (x = 0; x < 320; x++) {
 				*p++ = argb[gfx_pal[PX4_EVEN_GET(s[x])]];

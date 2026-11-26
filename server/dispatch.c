@@ -167,7 +167,12 @@ void pc3d_dispatch(struct client *c, uint16_t code, uint32_t arg,
 		return;
 
 	case GFXIOC_GETPIXEL:
-		ok(r, display_gfx_getpixel(arg & 0x3FF, (arg >> 10) & 0x1FF));
+		/* PIXEL() asks for MMBasic's fixed colours; SAVE IMAGE for
+		 * the screen's (pico_ioctl.h) */
+		if (arg & GFX_GETPIXEL_FIXED)
+			ok(r, display_gfx_pixel_read(arg & 0x3FF, (arg >> 10) & 0x1FF));
+		else
+			ok(r, display_gfx_getpixel(arg & 0x3FF, (arg >> 10) & 0x1FF));
 		return;
 
 	case GFXIOC_RECT: {
@@ -238,12 +243,16 @@ void pc3d_dispatch(struct client *c, uint16_t code, uint32_t arg,
 	}
 
 	case GFXIOC_FBOPEN: {
+		/* bits 16-23 of a claim: a layer's transparent index, which
+		 * the board's kernel, having no live layers, ignores */
 		int v = (int)arg;
 		int rc = display_fb_open(who, v & 0xFF, (v >> 8) & 0xFF);
 		if (rc) {
 			fail(r, rc == -2 ? EBUSY : EINVAL);
 			return;
 		}
+		if (v & 0xFF)
+			display_fb_transparent(who, (v >> 8) & 0xFF, (v >> 16) & 0xFF);
 		ok(r, 0);
 		return;
 	}
@@ -304,6 +313,64 @@ void pc3d_dispatch(struct client *c, uint16_t code, uint32_t arg,
 			fail(r, EINVAL);
 			return;
 		}
+		ok(r, 0);
+		return;
+	}
+
+	case GFXIOC_RESIZE: {
+		struct gfx_resize gz;
+		if (len < sizeof gz) { fail(r, EFAULT); return; }
+		memcpy(&gz, pl, sizeof gz);
+		if (display_gfx_resize(who, &gz)) { fail(r, EINVAL); return; }
+		ok(r, 0);
+		return;
+	}
+
+	case GFXIOC_WARP: {
+		/* display_warp.c checks every value; here only that the
+		 * payload holds what the header says, copied out aligned */
+		struct pc3w_warp w;
+		struct gfx_warp g;
+		size_t es, each, need;
+		void *arr[4] = { NULL, NULL, NULL, NULL };
+		const unsigned char *p;
+		int i, rc;
+		if (len < sizeof w) { fail(r, EFAULT); return; }
+		memcpy(&w, pl, sizeof w);
+		es = (w.op == GFX_AFFINE || w.op == GFX_SPAN) ? 8 : 4;
+		each = (size_t)w.n * es;
+		need = sizeof w;
+		for (i = 0; i < 4; i++)
+			if (w.mask & (1 << i))
+				need += each;
+		if (len < need) { fail(r, EFAULT); return; }
+		memset(&g, 0, sizeof g);
+		g.op = w.op; g.src = w.src; g.dst = w.dst; g.outside = w.outside;
+		g.n = w.n; g.step = w.step; g.first = w.first;
+		g.left = w.left; g.width = w.width; g.edge = w.edge; g.trans = w.trans;
+		p = pl + sizeof w;
+		rc = 0;
+		for (i = 0; i < 4 && !rc; i++)
+			if (w.mask & (1 << i)) {
+				arr[i] = malloc(each ? each : 1);
+				if (!arr[i])
+					rc = 1;
+				else {
+					memcpy(arr[i], p, each);
+					p += each;
+					g.a[i] = arr[i];
+				}
+			}
+		if (rc) {
+			for (i = 0; i < 4; i++)
+				free(arr[i]);
+			fail(r, ENOMEM);
+			return;
+		}
+		rc = display_gfx_warp(who, &g);
+		for (i = 0; i < 4; i++)
+			free(arr[i]);
+		if (rc) { fail(r, EINVAL); return; }
 		ok(r, 0);
 		return;
 	}
