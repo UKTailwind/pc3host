@@ -110,6 +110,20 @@ for t in warp_test affine_test; do
 	fi
 done
 
+# ---- tilemap_load.bas: TILEMAP LOAD ------------------------------------------
+# The PicoMite's own Testfiles/TilemapLoadTest.bas, unmodified, with the
+# Bas/breakout.map it reads: a map from a file against the same map from
+# DATA, the default extension, a reload, every malformed file by its
+# message, and a 256 x 256 map.  How long that took is not compared.
+cp "$D/breakout.map" "$W/"
+if ! ( cd "$W" && BIN=$BIN W=$W MMB2C=$BIN/mmbc bash "$M/fcc/fccbuild.sh" "$D/tilemap_load.bas" ) > "$W/tilemap_load.build.log" 2>&1; then
+	echo "FAIL  tilemap_load (build)"; tail -5 "$W/tilemap_load.build.log"; fail=1
+else
+	( cd "$W" && "$BIN/bcrun" "$W/tilemap_load.bc" < /dev/null > "$W/tilemap_load.out" 2>&1 )
+	sed -E 's/load took[0-9]+ ms/load took n ms/' "$W/tilemap_load.out" > "$W/tilemap_load.cmp"
+	check "tilemap_load" "$W/tilemap_load.cmp" "$D/tilemap_load.expected"
+fi
+
 # ---- layers.bas, layers_tft.bas: the layers as the window shows them -----------
 # Framebuffer 2 MERGEd over F, and L and T shown live, T over L, as the
 # VGA and HDMI firmware shows them; then the TFT model, where a MERGE of

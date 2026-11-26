@@ -1,0 +1,28 @@
+ok:   loaded cols =20
+ok:   loaded rows =30
+ok:   cells differing from CREATE =0
+ok:   default .map extension, cols =20
+ok:   reload into used slot, rows =30
+ok:   reload keeps a cell =0
+ok:   size missing ->Tilemap file must start with width and height (1-10000)
+ok:   zero width ->Tilemap file must start with width and height (1-10000)
+ok:   too few values ->Not enough data in tilemap file (need 600, found 10)
+ok:   invalid character ->Invalid character in tilemap file
+ok:   value out of range ->Value out of range in tilemap file
+ok:   empty file ->Tilemap file must start with width and height (1-10000)
+ok:   missing file ->Could not find the file
+ok:   slot 2 survives failed loads =20
+ok:   breakout.map cols =20
+ok:   breakout.map rows =30
+ok:   breakout.map top wall =5
+ok:   breakout.map red brick =1
+ok:   breakout.map blue brick =4
+ok:   breakout.map empty =0
+writing tmbig.map ...
+256x256 load took n ms
+ok:   big cols =256
+ok:   big rows =256
+ok:   big cells sampled, mismatches =0
+ok:   big last cell =764
+TILEMAP LOAD:24 of24 checks passed
+PASS

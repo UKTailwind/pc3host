@@ -16,7 +16,7 @@ D=$P/tests/e2e
 rm -rf "$W"; mkdir -p "$W"; cd "$W" || exit 1
 cp "$D"/gfx1.bas "$D"/gfxc.c "$D"/keys.bas "$D"/play.bas "$D"/writebuff.bas "$D"/prtscr.bas "$D"/onkeyarm.bas "$D"/*.expected "$D"/*.golden.bmp .
 cp "$D"/warp_test.bas "$D"/affine_test.bas "$D"/layers.bas "$D"/layers_tft.bas .
-cp "$D"/modsample.bas "$D"/doppler.mod .
+cp "$D"/modsample.bas "$D"/doppler.mod "$D"/tilemap_load.bas "$D"/breakout.map .
 export PC3_SOCKET="$(cygpath -w "$TEMP")\\pc3-e2e.sock"
 export PC3_AUTOSTART=0
 rm -f "$TEMP/pc3-e2e.sock"
@@ -94,6 +94,12 @@ for t in warp_test affine_test; do
 	tr -d '\r' < $t.expected > $t.exp
 	check "$t" $t.cmp $t.exp
 done
+# TILEMAP LOAD: the PicoMite's own test, as run.sh runs it
+"$T/bin/cc.exe" tilemap_load.bas > tilemap_load.cc 2>&1 || { echo "FAIL  cc tilemap_load"; cat tilemap_load.cc; fail=1; }
+timeout 120 "$T/bin/bcrun.exe" tilemap_load.bc < /dev/null > tilemap_load.out 2>&1
+tr -d '\r' < tilemap_load.out | sed -E 's/load took[0-9]+ ms/load took n ms/' > tilemap_load.cmp
+tr -d '\r' < tilemap_load.expected > tilemap_load.exp
+check "tilemap_load" tilemap_load.cmp tilemap_load.exp
 kill $SRV 2>/dev/null; sleep 1
 # The live layers, read from the window a server of their own presented
 # (--snapshot), as run.sh does
