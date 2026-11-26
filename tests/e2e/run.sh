@@ -302,6 +302,16 @@ if [ -x "$BIN/sndharness" ]; then
 		echo "bcrun play exit $?" >> "$W/play.stdout"
 		check "play readback" "$W/play.out" "$D/play.expected"
 	fi
+	# PLAY MODSAMPLE: what playmod asks hxcmod to do, from its trace
+	cp "$D/doppler.mod" "$W/"
+	rm -f "$W/modsample.calls"
+	if ! ( cd "$W" && BIN=$BIN W=$W MMB2C=$BIN/mmbc bash "$M/fcc/fccbuild.sh" "$D/modsample.bas" ) > "$W/modsample.build.log" 2>&1; then
+		echo "FAIL  modsample (build)"; tail -5 "$W/modsample.build.log"; fail=1
+	else
+		( cd "$W" && PLAYMOD_TRACE="$W/modsample.calls" timeout 30 "$BIN/bcrun" "$W/modsample.bc" < /dev/null > "$W/modsample.stdout" 2>&1 )
+		check "modsample readback" "$W/modsample.out" "$D/modsample.expected"
+		check "modsample calls" "$W/modsample.calls" "$D/modsample_calls.expected"
+	fi
 fi
 
 echo "e2e: pictures in $W/gfx1.png and $W/gfxc.png"

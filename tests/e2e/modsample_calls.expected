@@ -1,0 +1,15 @@
+play 9 0 63 223 0 0
+play 10 1 0 223 0 0
+play 0 2 63 162 0 0
+play 30 3 0 23863 0 -100
+play 9 0 39 223 1 -100
+play 10 1 63 223 1 0
+play 10 2 63 223 1 0
+play 9 3 63 7 0 38
+change 0 -1 0 1000
+change 0 -1 0 0
+change 0 31 324 -100
+change 1 0 0 1000
+change 2 -1 447 1000
+stop 0
+stop -1

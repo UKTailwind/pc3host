@@ -16,6 +16,7 @@ D=$P/tests/e2e
 rm -rf "$W"; mkdir -p "$W"; cd "$W" || exit 1
 cp "$D"/gfx1.bas "$D"/gfxc.c "$D"/keys.bas "$D"/play.bas "$D"/writebuff.bas "$D"/prtscr.bas "$D"/onkeyarm.bas "$D"/*.expected "$D"/*.golden.bmp .
 cp "$D"/warp_test.bas "$D"/affine_test.bas "$D"/layers.bas "$D"/layers_tft.bas .
+cp "$D"/modsample.bas "$D"/doppler.mod .
 export PC3_SOCKET="$(cygpath -w "$TEMP")\\pc3-e2e.sock"
 export PC3_AUTOSTART=0
 rm -f "$TEMP/pc3-e2e.sock"
@@ -77,6 +78,12 @@ if grep -q "underruns while feeding: 0" pcmpace.out; then echo "pass  pcmpace"; 
 "$T/bin/cc.exe" play.bas > play.cc 2>&1 || { echo "FAIL  cc play"; fail=1; }
 timeout 60 "$T/bin/bcrun.exe" play.bc > play.out 2>&1
 check "play" play.out play.expected
+# PLAY MODSAMPLE: what playmod asked hxcmod to do, from its trace
+"$T/bin/cc.exe" modsample.bas > modsample.cc 2>&1 || { echo "FAIL  cc modsample"; fail=1; }
+PLAYMOD_TRACE="$(cygpath -w "$W")\\modsample.calls" timeout 60 "$T/bin/bcrun.exe" modsample.bc < /dev/null > modsample.stdout 2>&1
+check "modsample" modsample.out modsample.expected
+tr -d '\r' < modsample.calls > modsample.calls.cmp
+check "modsample calls" modsample.calls.cmp modsample_calls.expected
 # MMBasic V8's raster commands: tests/e2e/run.sh says what these are and
 # why the AFFINE and SPAN counts are not compared
 for t in warp_test affine_test; do
