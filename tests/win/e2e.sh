@@ -17,6 +17,7 @@ rm -rf "$W"; mkdir -p "$W"; cd "$W" || exit 1
 cp "$D"/gfx1.bas "$D"/gfxc.c "$D"/keys.bas "$D"/play.bas "$D"/writebuff.bas "$D"/prtscr.bas "$D"/onkeyarm.bas "$D"/*.expected "$D"/*.golden.bmp .
 cp "$D"/warp_test.bas "$D"/affine_test.bas "$D"/layers.bas "$D"/layers_tft.bas .
 cp "$D"/modsample.bas "$D"/doppler.mod "$D"/tilemap_load.bas "$D"/breakout.map .
+cp "$D"/pngcrop.bas "$D"/big.png .
 export PC3_SOCKET="$(cygpath -w "$TEMP")\\pc3-e2e.sock"
 export PC3_AUTOSTART=0
 rm -f "$TEMP/pc3-e2e.sock"
@@ -100,6 +101,12 @@ timeout 120 "$T/bin/bcrun.exe" tilemap_load.bc < /dev/null > tilemap_load.out 2>
 tr -d '\r' < tilemap_load.out | sed -E 's/load took[0-9]+ ms/load took n ms/' > tilemap_load.cmp
 tr -d '\r' < tilemap_load.expected > tilemap_load.exp
 check "tilemap_load" tilemap_load.cmp tilemap_load.exp
+# LOAD PNG's crop and offsets, SPRITE LOADPNG's part, as run.sh runs it
+"$T/bin/cc.exe" pngcrop.bas > pngcrop.cc 2>&1 || { echo "FAIL  cc pngcrop"; cat pngcrop.cc; fail=1; }
+timeout 60 "$T/bin/bcrun.exe" pngcrop.bc < /dev/null > pngcrop.out 2>&1
+tr -d '\r' < pngcrop.out > pngcrop.cmp
+tr -d '\r' < pngcrop.expected > pngcrop.exp
+check "pngcrop" pngcrop.cmp pngcrop.exp
 kill $SRV 2>/dev/null; sleep 1
 # The live layers, read from the window a server of their own presented
 # (--snapshot), as run.sh does

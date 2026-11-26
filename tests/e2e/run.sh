@@ -124,6 +124,19 @@ else
 	check "tilemap_load" "$W/tilemap_load.cmp" "$D/tilemap_load.expected"
 fi
 
+# ---- pngcrop.bas: LOAD PNG's crop and offsets, SPRITE LOADPNG's part --------
+# big.png is 400 x 300, bigger than MODE 2's screen, every pixel one of
+# the RGB121 colours PIXEL() reads back; the program checks the screen
+# against its own model of the picture.  loadpng's message for an
+# offset outside the image is part of what is compared.
+cp "$D/big.png" "$W/"
+if ! ( cd "$W" && BIN=$BIN W=$W MMB2C=$BIN/mmbc bash "$M/fcc/fccbuild.sh" "$D/pngcrop.bas" ) > "$W/pngcrop.build.log" 2>&1; then
+	echo "FAIL  pngcrop (build)"; tail -5 "$W/pngcrop.build.log"; fail=1
+else
+	( cd "$W" && "$BIN/bcrun" "$W/pngcrop.bc" < /dev/null > "$W/pngcrop.out" 2>&1 )
+	check "pngcrop" "$W/pngcrop.out" "$D/pngcrop.expected"
+fi
+
 # ---- layers.bas, layers_tft.bas: the layers as the window shows them -----------
 # Framebuffer 2 MERGEd over F, and L and T shown live, T over L, as the
 # VGA and HDMI firmware shows them; then the TFT model, where a MERGE of
