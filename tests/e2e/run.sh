@@ -176,6 +176,17 @@ if command -v python3 > /dev/null; then
 	fi
 fi
 
+# ---- threads.bas: INPUT lets the other threads run -------------------------
+# The line comes 0.3 s after the program starts, through a pipe: the
+# busy thread and the other thread's SETTICK must have run meanwhile,
+# where a blocking read would have stopped them both.
+if ! ( cd "$W" && BIN=$BIN W=$W MMB2C=$BIN/mmbc bash "$M/fcc/fccbuild.sh" "$D/threads.bas" ) > "$W/threads.build.log" 2>&1; then
+	echo "FAIL  threads (build)"; tail -5 "$W/threads.build.log"; fail=1
+else
+	( cd "$W" && ( sleep 0.3; echo hello ) | timeout 20 "$BIN/bcrun" "$W/threads.bc" > "$W/threads.out" 2>&1 )
+	check "threads" "$W/threads.out" "$D/threads.expected"
+fi
+
 # ---- layers.bas, layers_tft.bas: the layers as the window shows them -----------
 # Framebuffer 2 MERGEd over F, and L and T shown live, T over L, as the
 # VGA and HDMI firmware shows them; then the TFT model, where a MERGE of

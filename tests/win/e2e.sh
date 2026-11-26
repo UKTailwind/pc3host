@@ -19,6 +19,7 @@ cp "$D"/warp_test.bas "$D"/affine_test.bas "$D"/layers.bas "$D"/layers_tft.bas .
 cp "$D"/modsample.bas "$D"/doppler.mod "$D"/tilemap_load.bas "$D"/breakout.map .
 cp "$D"/pngcrop.bas "$D"/big.png .
 cp "$D"/spritefix.bas "$D"/good16.bmp "$D"/bad16.bmp "$D"/spriteb.bas .
+cp "$D"/threads.bas .
 export PC3_SOCKET="$(cygpath -w "$TEMP")\\pc3-e2e.sock"
 export PC3_AUTOSTART=0
 rm -f "$TEMP/pc3-e2e.sock"
@@ -119,6 +120,15 @@ timeout 60 "$T/bin/bcrun.exe" spriteb.bc < /dev/null > spriteb.out 2>&1
 tr -d '\r' < spriteb.out > spriteb.cmp
 tr -d '\r' < spriteb.expected > spriteb.exp
 check "spriteb" spriteb.cmp spriteb.exp
+
+# INPUT lets the other threads run: the line comes 0.3 s late, through
+# a pipe, and the busy thread and the other thread's SETTICK must have
+# run meanwhile (the high-resolution timer and msvcrt's buffer check)
+"$T/bin/cc.exe" threads.bas > threads.cc 2>&1 || { echo "FAIL  cc threads"; cat threads.cc; fail=1; }
+( sleep 0.3; echo hello ) | timeout 60 "$T/bin/bcrun.exe" threads.bc > threads.out 2>&1
+tr -d '\r' < threads.out > threads.cmp
+tr -d '\r' < threads.expected > threads.exp
+check "threads" threads.cmp threads.exp
 kill $SRV 2>/dev/null; sleep 1
 # The live layers, read from the window a server of their own presented
 # (--snapshot), as run.sh does
