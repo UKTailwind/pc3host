@@ -200,13 +200,14 @@ static void bbc_square(void)
 	check("the square sounds", nonzero);
 	check("pitch 89 is 440 Hz", crossings >= 214 && crossings <= 226);
 
-	/* the queue: eight notes, then EAGAIN */
+	/* the queue: sixteen notes (the PicoMite's BBC_QLEN since its
+	 * 6f263f7), then EAGAIN */
 	sound_quiet();
-	check("QUIET empties the queue", sound_qfree(1) == 8);
-	for (i = 0; i < 8; i++)
+	check("QUIET empties the queue", sound_qfree(1) == 16);
+	for (i = 0; i < 16; i++)
 		sound_cmd(1, -15, 89 + i, 5);
 	/* the first note starts playing at once, so one slot is back */
-	check("nine notes fill the queue", sound_cmd(1, -15, 100, 5) == 0 && sound_cmd(1, -15, 101, 5) == -1);
+	check("seventeen notes fill the queue", sound_cmd(1, -15, 110, 5) == 0 && sound_cmd(1, -15, 111, 5) == -1);
 	sound_quiet();
 }
 

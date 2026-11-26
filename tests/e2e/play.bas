@@ -23,6 +23,14 @@ PLAY WAV "snd.wav"
 PAUSE 300
 PLAY STOP
 Print #1, "wav twice"
+' MM.INFO(BBC BUFFER [ch]): the first note plays at once, two wait in
+' channel 1's queue of 16; PLAY STOP empties them
+PLAY BBC SOUND 1, -15, 100, 20
+PLAY BBC SOUND 1, -15, 100, 20
+PLAY BBC SOUND 1, -15, 100, 20
+Print #1, "bbc buffer"; MM.Info(BBC BUFFER 1); MM.Info(BBC BUFFER); MM.Info(BBC BUFFER 0)
+PLAY STOP
+Print #1, "bbc buffer"; MM.Info(BBC BUFFER)
 Close #1
 End
 

@@ -704,6 +704,8 @@ int pc3_sys_ioctl(int fd, unsigned long code, void *arg)
 		return roundtrip(fd, (uint16_t)code, NULL, 0, arg, sizeof(struct kbd_down));
 	case PICOIOC_BOARD:
 		return roundtrip(fd, (uint16_t)code, NULL, 0, arg, sizeof(int));
+	case PICOIOC_ADVAL:		/* the selector in, the count as the result */
+		return roundtrip(fd, (uint16_t)code, arg, sizeof(int), NULL, 0);
 
 	/* the pointer-bearing ones */
 	case GFXIOC_PIXELS:

@@ -602,6 +602,22 @@ void pc3d_dispatch(struct client *c, uint16_t code, uint32_t arg,
 		sndhw_unlock();
 		ok(r, 0);
 		return;
+	case PICOIOC_ADVAL: {
+		/* misc.c's ADVAL, of which only the sound queues belong
+		 * here: -5 to -8, the free note slots on channels 0 to 3
+		 * (MM.INFO(BBC BUFFER)).  The rest is pin work and clocks
+		 * the board answers for itself. */
+		int32_t n, rc;
+
+		if (len < sizeof n) { fail(r, EFAULT); return; }
+		memcpy(&n, pl, sizeof n);
+		if (n > -5 || n < -8) { fail(r, EINVAL); return; }
+		sndhw_lock();
+		rc = sound_qfree(-5 - n);
+		sndhw_unlock();
+		ok(r, rc);
+		return;
+	}
 	case SNDIOC_PCMOPEN: {
 		struct snd_pcm p;
 		int rc;
