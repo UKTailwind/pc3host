@@ -1,0 +1,7 @@
+swap: FF FFFFFF
+write: FF FF0000
+move: FF 0
+safe: FF 0
+loadimage: truncated image data
+bad:  1
+good: 16 FF0000

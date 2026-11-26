@@ -137,6 +137,27 @@ else
 	check "pngcrop" "$W/pngcrop.out" "$D/pngcrop.expected"
 fi
 
+# ---- spritefix.bas: the PicoMite's sprite fixes, by their pixels -----------
+# SWAP over the stored background (#89), WRITE as a stamp and the opaque
+# orientations kept with the sprite (#90), and a BMP that fails to
+# decode leaving no buffer in use (#93; bad16.bmp is good16.bmp cut off
+# after three rows).  loadimage's message for it is compared too.
+cp "$D/good16.bmp" "$D/bad16.bmp" "$W/"
+if ! ( cd "$W" && BIN=$BIN W=$W MMB2C=$BIN/mmbc bash "$M/fcc/fccbuild.sh" "$D/spritefix.bas" ) > "$W/spritefix.build.log" 2>&1; then
+	echo "FAIL  spritefix (build)"; tail -5 "$W/spritefix.build.log"; fail=1
+else
+	( cd "$W" && "$BIN/bcrun" "$W/spritefix.bc" < /dev/null > "$W/spritefix.out" 2>&1 )
+	check "spritefix" "$W/spritefix.out" "$D/spritefix.expected"
+fi
+# SPRITE(B): the background collision and its sides, the expected values
+# worked by hand from the firmware's fun_sprite (issue #92's case among them)
+if ! ( cd "$W" && BIN=$BIN W=$W MMB2C=$BIN/mmbc bash "$M/fcc/fccbuild.sh" "$D/spriteb.bas" ) > "$W/spriteb.build.log" 2>&1; then
+	echo "FAIL  spriteb (build)"; tail -5 "$W/spriteb.build.log"; fail=1
+else
+	( cd "$W" && "$BIN/bcrun" "$W/spriteb.bc" < /dev/null > "$W/spriteb.out" 2>&1 )
+	check "spriteb" "$W/spriteb.out" "$D/spriteb.expected"
+fi
+
 # ---- layers.bas, layers_tft.bas: the layers as the window shows them -----------
 # Framebuffer 2 MERGEd over F, and L and T shown live, T over L, as the
 # VGA and HDMI firmware shows them; then the TFT model, where a MERGE of

@@ -18,6 +18,7 @@ cp "$D"/gfx1.bas "$D"/gfxc.c "$D"/keys.bas "$D"/play.bas "$D"/writebuff.bas "$D"
 cp "$D"/warp_test.bas "$D"/affine_test.bas "$D"/layers.bas "$D"/layers_tft.bas .
 cp "$D"/modsample.bas "$D"/doppler.mod "$D"/tilemap_load.bas "$D"/breakout.map .
 cp "$D"/pngcrop.bas "$D"/big.png .
+cp "$D"/spritefix.bas "$D"/good16.bmp "$D"/bad16.bmp "$D"/spriteb.bas .
 export PC3_SOCKET="$(cygpath -w "$TEMP")\\pc3-e2e.sock"
 export PC3_AUTOSTART=0
 rm -f "$TEMP/pc3-e2e.sock"
@@ -107,6 +108,17 @@ timeout 60 "$T/bin/bcrun.exe" pngcrop.bc < /dev/null > pngcrop.out 2>&1
 tr -d '\r' < pngcrop.out > pngcrop.cmp
 tr -d '\r' < pngcrop.expected > pngcrop.exp
 check "pngcrop" pngcrop.cmp pngcrop.exp
+# the PicoMite's sprite fixes, by their pixels, as run.sh runs it
+"$T/bin/cc.exe" spritefix.bas > spritefix.cc 2>&1 || { echo "FAIL  cc spritefix"; cat spritefix.cc; fail=1; }
+timeout 60 "$T/bin/bcrun.exe" spritefix.bc < /dev/null > spritefix.out 2>&1
+tr -d '\r' < spritefix.out > spritefix.cmp
+tr -d '\r' < spritefix.expected > spritefix.exp
+check "spritefix" spritefix.cmp spritefix.exp
+"$T/bin/cc.exe" spriteb.bas > spriteb.cc 2>&1 || { echo "FAIL  cc spriteb"; cat spriteb.cc; fail=1; }
+timeout 60 "$T/bin/bcrun.exe" spriteb.bc < /dev/null > spriteb.out 2>&1
+tr -d '\r' < spriteb.out > spriteb.cmp
+tr -d '\r' < spriteb.expected > spriteb.exp
+check "spriteb" spriteb.cmp spriteb.exp
 kill $SRV 2>/dev/null; sleep 1
 # The live layers, read from the window a server of their own presented
 # (--snapshot), as run.sh does
