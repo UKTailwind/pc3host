@@ -1,0 +1,5 @@
+b'ready\r\n'
+b'next\r\n'
+b'int\r\n'
+b'bye\r\n'
+exit 0

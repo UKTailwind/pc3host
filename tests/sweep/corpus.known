@@ -6,7 +6,9 @@
 # cursor escapes, the one legitimate PLAY SOUND in play and strargs
 # (the goldens expect "Sound output did not start" and it plays), and
 # webservz's MM.INFO(IP ADDRESS) (the golden says 0.0.0.0 and the
-# server answers with the machine's address).  Eleven are the pin and
+# server answers with the machine's address), and com8, whose golden
+# says a serial port is not available where a PC tries to open COM1
+# (tests/e2e/serial.bas is the PC's own test).  Eleven are the pin and
 # peripheral tests, which a PC refuses until phase 8.  A name leaving
 # this list is progress; a name arriving is a fault.
 mminfo
@@ -14,6 +16,7 @@ printat
 play
 strargs
 webservz
+com8
 countpin
 gpio
 i2c2

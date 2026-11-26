@@ -52,7 +52,7 @@ if(WIN32)
     add_library(pc3win OBJECT hostshim/win32/winshim.c)
     target_include_directories(pc3win PUBLIC hostshim/win32/include)
     target_compile_options(pc3win PRIVATE -O2 -g -Wall -Wextra)
-    target_link_libraries(pc3win PUBLIC ws2_32 bcrypt iphlpapi crypt32 pthread)
+    target_link_libraries(pc3win PUBLIC ws2_32 bcrypt iphlpapi crypt32 setupapi pthread)
     add_link_options(-static -static-libgcc -static-libstdc++)
     # MinGW own printf family: C99 exponents (1e+05, not 1e+005), %lld, %zu
     add_compile_definitions(__USE_MINGW_ANSI_STDIO=1)
@@ -167,7 +167,7 @@ add_dependencies(ccbc cc_headers)
 # a socket.  bcrun (for the runtime and for bytecode programs) and the
 # image programs link it and are built with PC_HOST, which is the one
 # define the FUZIX sources know for "on a PC, talk to the server".
-add_library(pc3client STATIC client/pc3client.c)
+add_library(pc3client STATIC client/pc3client.c client/pc3com.c)
 target_include_directories(pc3client PUBLIC client proto ${PLAT_DIR})
 target_link_libraries(pc3client PUBLIC ${PC3_SHIM})
 

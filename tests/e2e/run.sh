@@ -158,6 +158,24 @@ else
 	check "spriteb" "$W/spriteb.out" "$D/spriteb.expected"
 fi
 
+# ---- serial.bas: a serial port, here a pseudo-terminal -----------------------
+# OPEN "port:baud,buffer,interrupt,level" AS #n with the port named as the
+# OS names it.  serialpty.py links one end of a pty as ./ttyTEST and
+# answers at the other: LINE INPUT, LOC, INPUT$, EOF, LOF, the interrupt
+# at its level and CLOSE.  What the program saw is serial.out; what it
+# sent, the transcript.  Linux only: Windows has no pty, and its COM code
+# is compiled, not run, here.
+if command -v python3 > /dev/null; then
+	if ! ( cd "$W" && BIN=$BIN W=$W MMB2C=$BIN/mmbc bash "$M/fcc/fccbuild.sh" "$D/serial.bas" ) > "$W/serial.build.log" 2>&1; then
+		echo "FAIL  serial (build)"; tail -5 "$W/serial.build.log"; fail=1
+	elif ! python3 "$D/serialpty.py" "$W" "$BIN/bcrun" "$W/serial.bc" > "$W/serial.pty" 2>&1; then
+		echo "FAIL  serial: $(tail -1 "$W/serial.pty")"; fail=1
+	else
+		check "serial" "$W/serial.out" "$D/serial.expected"
+		check "serial sent" "$W/serial.pty" "$D/serial_pty.expected"
+	fi
+fi
+
 # ---- layers.bas, layers_tft.bas: the layers as the window shows them -----------
 # Framebuffer 2 MERGEd over F, and L and T shown live, T over L, as the
 # VGA and HDMI firmware shows them; then the TFT model, where a MERGE of

@@ -1,0 +1,5 @@
+lof 256 loc 0 eof 1
+line [line one]
+loc 3 [XYZ] 0 1
+interrupt [123456789ABC]
+closed
